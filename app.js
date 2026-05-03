@@ -1226,7 +1226,7 @@ function seedData() {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js?v=23").catch(() => null);
+    navigator.serviceWorker.register("./sw.js?v=24", { updateViaCache: "none" }).catch(() => null);
   }
   window.addEventListener("online", () => {
     el.offlineBadge.textContent = "online";
@@ -1234,7 +1234,7 @@ function registerServiceWorker() {
   window.addEventListener("offline", () => {
     el.offlineBadge.textContent = "offline";
   });
-  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v23`;
+  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v24`;
 }
 
 function hasCoordinates(item) {
