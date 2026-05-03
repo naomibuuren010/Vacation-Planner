@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vacation Planner</title>
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Vacation Planner">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  >
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Vacation Planner</h1>
+    <span id="offlineBadge" class="badge">offline klaar</span>
+  </header>
+
+  <main class="container">
+    <section class="panel panel-landen">
+      <div class="panel-header">
+        <h2>Landen</h2>
+        <button id="addCountryBtn">+ Land</button>
+      </div>
+      <ul id="countriesList" class="list"></ul>
+    </section>
+
+    <div class="trip-stack" id="tripStack">
+      <article class="trip-card trip-card--places">
+        <div class="panel-header">
+          <h2 id="countryTitle">Plaatsen</h2>
+          <div class="actions">
+            <button id="addCityBtn" disabled>+ Stad</button>
+            <button id="addAreaBtn" disabled>+ Gebied</button>
+          </div>
+        </div>
+        <p class="panel-hint meta">Volgorde: bovenaan = eerst op reis. Dagen staan klein boven elke plek; pas aan via Bewerk.</p>
+        <p class="trip-card-kicker">Route</p>
+        <ul id="placesList" class="list"></ul>
+      </article>
+
+      <article class="trip-card trip-card--activities">
+        <div class="panel-header">
+          <h2 id="activitiesCardTitle">Activiteiten</h2>
+          <button id="addActivityBtn" disabled>+ Activiteit</button>
+        </div>
+        <p id="activitiesCardHint" class="panel-hint meta"></p>
+        <ul id="activitiesList" class="list"></ul>
+      </article>
+
+      <article class="trip-card trip-card--hotels">
+        <div class="panel-header">
+          <h2 id="hotelsCardTitle">Hotels</h2>
+          <button id="addHotelBtn" disabled>+ Hotel</button>
+        </div>
+        <p id="hotelsCardHint" class="panel-hint meta"></p>
+        <ul id="hotelsList" class="list"></ul>
+      </article>
+    </div>
+
+    <section class="panel panel-map">
+      <div class="panel-header">
+        <h2>Kaart met plekken</h2>
+      </div>
+      <div id="placeMap" class="map"></div>
+      <p id="mapHint" class="meta">
+        Gebruik Google Maps link voor automatische pin of “Pin op kaart” als fallback.
+      </p>
+    </section>
+  </main>
+
+  <dialog id="inputDialog">
+    <form method="dialog" id="inputForm" novalidate>
+      <h3 id="dialogTitle"></h3>
+      <label class="field">
+        <span id="fieldLabel">Naam</span>
+        <input id="fieldValue" />
+      </label>
+      <menu class="dialog-actions">
+        <button type="button" id="cancelBtn">Annuleer</button>
+        <button type="submit" value="confirm" id="confirmBtn">Opslaan</button>
+      </menu>
+    </form>
+  </dialog>
+  <input id="photoPicker" type="file" accept="image/*" style="display:none">
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+  <script src="app.js?v=21"></script>
+</body>
+</html>
+

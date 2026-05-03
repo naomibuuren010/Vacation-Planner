@@ -1,0 +1,10 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor / tooling (optioneel)
+*.log
+
+# Cursor (lokaal)
+.cursor/
