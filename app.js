@@ -1008,10 +1008,10 @@ function parseOptionalStayDays(str) {
 
 function formatPlaceStayDaysLine(stayDays) {
   if (typeof stayDays === "number" && Number.isFinite(stayDays) && stayDays >= 1) {
-    const label = stayDays === 1 ? "1 dag" : `${stayDays} dagen`;
-    return `<span class="place-days-inner">${escapeHtml(label)}</span>`;
+    const n = String(stayDays);
+    return `<span class="place-days-inner"><span class="place-days-k">Dagen</span><span class="place-days-sep">·</span><span class="place-days-n">${escapeHtml(n)}</span></span>`;
   }
-  return `<span class="place-days-inner place-days-inner--muted">—</span>`;
+  return `<span class="place-days-inner place-days-inner--muted"><span class="place-days-k">Dagen</span><span class="place-days-sep">·</span><span class="place-days-n">—</span></span>`;
 }
 
 function isAppCompletelyEmpty(data) {
@@ -1221,7 +1221,7 @@ function seedData() {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js?v=21").catch(() => null);
+    navigator.serviceWorker.register("./sw.js?v=22").catch(() => null);
   }
   window.addEventListener("online", () => {
     el.offlineBadge.textContent = "online";
@@ -1229,7 +1229,7 @@ function registerServiceWorker() {
   window.addEventListener("offline", () => {
     el.offlineBadge.textContent = "offline";
   });
-  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v21`;
+  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v22`;
 }
 
 function hasCoordinates(item) {

@@ -143,14 +143,43 @@ button:disabled {
 }
 
 .place-days {
-  font-size: 0.68rem;
-  line-height: 1.2;
+  font-size: clamp(0.72rem, 3.1vw, 0.82rem);
+  line-height: 1.3;
   color: var(--muted);
   letter-spacing: 0.02em;
+  min-height: 1.3em;
+}
+
+.place-days-inner {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28em;
+}
+
+.place-days-k {
+  letter-spacing: 0.03em;
+  font-size: 0.95em;
+  opacity: 0.88;
+}
+
+.place-days-sep {
+  opacity: 0.65;
+  font-weight: 300;
+}
+
+.place-days-n {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--text) 82%, var(--muted));
+}
+
+.place-days-inner--muted .place-days-n {
+  font-weight: 500;
+  color: inherit;
 }
 
 .place-days-inner--muted {
-  opacity: 0.55;
+  opacity: 0.72;
 }
 
 .list li:first-child {
