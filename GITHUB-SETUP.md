@@ -52,6 +52,22 @@ git add .
 
 ## 4. GitHub Pages inschakelen
 
+### Optie A — met script (GitHub API)
+
+1. Maak een **Personal Access Token (classic)** met scope **`repo`**:  
+   https://github.com/settings/tokens  
+2. In PowerShell, in deze projectmap:
+
+```powershell
+cd "C:\Users\Eigenaar\Documents\Cursor\Apps\Vacation planner"
+$env:GITHUB_TOKEN = "ghp_JOUW_TOKEN_HIER"
+.\scripts\enable-github-pages.ps1
+```
+
+Daarna: **https://naomibuuren010.github.io/Vacation-Planner/** (na ~1 minuut).
+
+### Optie B — handmatig in GitHub
+
 1. Op GitHub: open je repo → **Settings** → **Pages** (linkermenu).  
 2. Onder **Build and deployment**:  
    - **Source**: **Deploy from a branch**  
