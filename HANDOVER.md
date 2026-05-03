@@ -1,101 +1,82 @@
 # Vacation Planner - Handover
 
 ## Doel
-Dit document houdt bij wat er gebouwd is, wat live staat, en wat de volgende stappen zijn.
-Gebruik dit in nieuwe chats om snel context te geven.
+Dit document beschrijft wat er gebouwd is, waar het draait, en hoe je verder werkt. Gebruik het in nieuwe chats om snel context te geven.
 
 ## Huidige stack
-- Platform: PWA (web app, iPhone homescreen via Safari)
-- Tech: HTML, CSS, JavaScript (zonder build tool)
-- Hosting: Netlify Drop
-- Data-opslag: `localStorage` (offline op toestel/browser)
-- Kaart: Leaflet + OpenStreetMap tiles
-- Locatie-resolutie: Google Maps link parsing (geen API key, geen billing)
+- Platform: PWA (Safari op iPhone → **Zet op beginscherm**)
+- Tech: HTML, CSS, JavaScript (geen build tool)
+- **Hosting (primair):** [GitHub Pages](https://pages.github.com/) — repo [naomibuuren010/Vacation-Planner](https://github.com/naomibuuren010/Vacation-Planner), bron `main` + map `/`
+- **Oude hosting (optioneel):** Netlify Drop-URL kan verouderd zijn; nieuwe releases gaan via **git push**
+- Data: `localStorage` onder key `vacation_planner_v1` (per browser / per origin; **GitHub Pages-URL ≠ Netlify-URL** = aparte data)
+- Kaart: Leaflet; tegels **CARTO Positron** met **OSM-fallback** bij tile-fouten
+- Locatie: alleen **parsen van coördinaten uit Google Maps-links** (geen Geocoding API, geen billing)
 
-## Live URL
-- Productie: [https://deft-duckanoo-568f9b.netlify.app/](https://deft-duckanoo-568f9b.netlify.app/)
+## Live URL’s
+- **GitHub Pages:** https://naomibuuren010.github.io/Vacation-Planner/
+- **Netlify (legacy, indien nog gebruikt):** https://deft-duckanoo-568f9b.netlify.app/
 
 ## Huidige versie
-- App versie-indicator in UI: `v11` (rechtsboven als `online v11` / `offline v11`)
-- Cache key in service worker: `vacation-planner-v11`
+- UI-badge: **v21** (`online v21` / `offline v21`)
+- `index.html`: `app.js?v=21`
+- `sw.js`: cache `vacation-planner-v21`, `app.js?v=21` in `ASSETS`
+- Bij grotere wijzigingen: **versie in `app.js`, `index.html` en `sw.js` gelijk hogen** + gebruikers **harde refresh** / PWA opnieuw openen
 
-## Functionaliteit die nu werkt
-- Landen beheren
-  - Toevoegen, bewerken, verwijderen
-- Steden/Gebieden beheren binnen gekozen land
-  - Toevoegen, bewerken, verwijderen
-- Activiteiten beheren binnen gekozen plek
-  - Toevoegen, bewerken, verwijderen
-  - Extra velden: `address`, `mapsLink`
-  - Auto pin via maps-link parsing
-- Hotels beheren binnen gekozen plek
-  - Toevoegen, bewerken, verwijderen
-  - Extra velden: `address`, `mapsLink`
-  - Auto pin via maps-link parsing
-- Kaartweergave
-  - Pins voor plekken (stad/gebied) met opgeslagen locatie
-  - Pins voor activiteiten met opgeslagen locatie
-  - Pins voor hotels met opgeslagen locatie
-- Pin-flow op kaart
-  - Bij plek: knop `Pin op kaart` -> tik op kaart om pin op te slaan
-  - Bij activiteit: knop `Pin op kaart` -> tik op kaart om pin op te slaan
-  - Bij hotel: knop `Pin op kaart` -> tik op kaart om pin op te slaan
-- Automatische locatie-resolutie
-  - Eerst parsing van Google Maps links (coördinaten in URL)
-  - Als parsing faalt: item wordt wel opgeslagen, handmatige pin mogelijk
-- iPhone/PWA invoerfix
-  - Op iOS/standalone wordt invoer via native `prompt()` afgehandeld (stabiel toetsenbord/focus)
-- Annuleer-flow werkt
-  - Geen blokkade meer door HTML form-validatie
+## Functionaliteit (kern)
+- **Landen:** toevoegen, bewerken, verwijderen
+- **Plaatsen (route):** één lijst met volgorde `sortOrder` (nieuw onderaan; niet A–Z). Types `city` | `area`. Optioneel **`stayDays`** (klein boven naam); bewerken via dialoog na naam
+- **Activiteiten** (per gekozen plek): titel, adres, **Google Maps-link** (pin + klik op marker opent link), optionele **foto** (URL of upload)
+- **Hotels:** adres, **Google Maps-link** (zoals activiteiten: meta `maps-link`, pin, marker → Maps), apart veld **`websiteUrl`** (klikbare site in de lijst)
+- **Layout:** verticale kolom + **trip-cards** (plaatsen / activiteiten / hotels); bij **meerdere landen** iets nadrukker styling (`multi-land`)
+- **Kaart:** pins plekken, activiteiten, hotels; handmatige pin na `Pin op kaart`
+- **iOS/PWA:** invoer veelal via native `prompt()` waar van toepassing (stabieler toetsenbord)
+- **Dataherstel bij laden:** ontbrekende `countryId`-landen worden aangevuld; wees-activiteiten/hotels worden waar mogelijk opnieuw gekoppeld (o.a. oude pleknamen uit JSON + adreshint). **Seed** alleen als **alles** leeg is (`countries`, `places`, `activities`, `hotels`), om dubbele Thailand-seed te voorkomen
 
-## Bekende UX-keuzes / beperkingen
-- Kaartlabels komen van OpenStreetMap, niet geforceerd Nederlands.
-- Zonder internet werken data en UI offline, maar kaarttegels kunnen beperkt zijn als nog niet gecached.
-- Data staat lokaal in browser/app-opslag; geen cloud sync.
-- Niet elke Google Maps link bevat bruikbare coördinaten; dan is handmatige pin nodig.
+## Bekende beperkingen
+- Geen cloud-sync; data blijft lokaal per apparaat en per site-URL
+- Niet elke Maps-link bevat coördinaten → handmatige pin
+- Offline: UI werkt; kaarttegels afhankelijk van cache/netwerk
 
 ## Belangrijke bestanden
-- `index.html` - app layout + scripts/css includes
-- `styles.css` - styling
-- `app.js` - volledige app-logica, data, CRUD, kaart en pin-flow
-- `sw.js` - service worker caching
-- `manifest.webmanifest` - PWA manifest
-- `icon.svg` - app icoon
+| Bestand | Rol |
+|--------|-----|
+| `index.html` | Layout, trip-stack, dialogs, script-`?v=` |
+| `styles.css` | Styling, trip-cards, lijst/layout |
+| `app.js` | Data, CRUD, kaart, normalisatie, herstel, seed |
+| `sw.js` | Cache-versie en asset-lijst |
+| `manifest.webmanifest` | PWA-manifest |
+| `icon.svg` | Icoon |
+| `GITHUB-SETUP.md` | Repo aanmaken, Pages (handmatig + script) |
+| `scripts/enable-github-pages.ps1` | Pages inschakelen via GitHub API (`$env:GITHUB_TOKEN`) |
 
-## Deploy procedure (Netlify Drop)
-1. Upload gewijzigde bestanden (of hele zip) in Netlify Deploys.
-2. Hard refresh op desktop: `Ctrl + F5`.
-3. Controleer versie rechtsboven (bijv. `online v11`).
-4. Op iPhone bij grote updates:
-   - Oude homescreen app verwijderen
-   - Site 1x in Safari openen
-   - Opnieuw `Zet op beginscherm`
+Ook in de repo: **legacy Swift**-bestanden (niet nodig voor de live PWA).
 
-## Data model (huidig, impliciet in JS objecten)
-- Country
-  - `id`, `name`
-- Place
-  - `id`, `countryId`, `type` (`city|area`), `name`, `latitude?`, `longitude?`
-- Activity
-  - `id`, `placeId`, `title`, `notes`, `date`, `address?`, `mapsLink?`, `latitude?`, `longitude?`
-- Hotel
-  - `id`, `placeId`, `name`, `address?`, `mapsLink?`, `latitude?`, `longitude?`
+## Deploy (GitHub Pages)
+1. Wijzig code lokaal.
+2. Verhoog indien nodig **dezelfde** versie in `app.js` (badge + `registerServiceWorker`), `index.html` (`app.js?v=`), `sw.js` (`CACHE_NAME` + `app.js?v=` in `ASSETS`).
+3. In projectmap:
 
-## Testprocedure maps-link -> pin
-1. Voeg activiteit toe met Google Maps link die coördinaten bevat -> pin moet direct verschijnen.
-2. Voeg hotel toe met Google Maps link die coördinaten bevat -> pin moet direct verschijnen.
-3. Gebruik link zonder bruikbare coördinaten -> item wordt opgeslagen zonder pin.
-4. Zet daarna handmatig pin via `Pin op kaart` -> pin verschijnt.
+```powershell
+cd "C:\Users\Eigenaar\Documents\Cursor\Apps\Vacation planner"
+git add -A
+git status
+git commit -m "Korte beschrijving"
+git push
+```
+
+4. GitHub Pages ververst na push (meestal binnen ~1 minuut).
+5. Op iPhone: site in Safari openen, eventueel verversen; bij grote SW-wijzigingen PWA opnieuw “vastzetten” als nodig.
+
+## Data model (samenvatting)
+- **Country:** `id`, `name`
+- **Place:** `id`, `countryId`, `type`, `name`, `latitude?`, `longitude?`, `sortOrder`, `stayDays?` (1–366 of weggelaten)
+- **Activity:** `id`, `placeId`, `title`, `notes`, `date`, `address`, `mapsLink`, `photoUrl`, `latitude`, `longitude`, `sortOrder`
+- **Hotel:** `id`, `placeId`, `name`, `address`, `mapsLink`, `websiteUrl`, `latitude`, `longitude`, `sortOrder`
+
+## Testen (maps → pin)
+1. Activiteit met Maps-URL met coördinaten → pin zichtbaar; klik marker → link opent.
+2. Hotel:zelfde voor Maps-pin; **website** opent vanuit de lijstregel, niet vanuit de korte meta.
+3. Link zonder coördinaten → opslaan lukt; handmatige pin mogelijk.
 
 ## Snelle context voor nieuwe chat (copy/paste)
-We bouwen een Vacation Planner PWA (HTML/CSS/JS) op Netlify:
-- URL: https://deft-duckanoo-568f9b.netlify.app/
-- Huidige versie: v11
-- Structuur: landen -> steden/gebieden -> activiteiten/hotels
-- Kaart via Leaflet met pinnen voor plekken, activiteiten en hotels
-- Auto-pin via maps-link parsing (geen API key nodig)
-- iPhone input gebruikt native prompt om focusproblemen te vermijden
-- Belangrijkste files: index.html, styles.css, app.js, sw.js
-
-Vraag: ga verder vanaf v11 en behoud huidige functionaliteit.
-
+We werken aan de Vacation Planner PWA (HTML/CSS/JS), primair op **GitHub Pages**: https://naomibuuren010.github.io/Vacation-Planner/ — repo https://github.com/naomibuuren010/Vacation-Planner . Versie **v21** (`app.js` / `index.html` / `sw.js`). Structuur: landen → plaatsen (route + dagen + sortOrder) → activiteiten/hotels per plek. Hotels: `mapsLink` voor kaart/pin, `websiteUrl` voor site-link in UI. Data in `localStorage`. Deploy: `git push`. Zie `HANDOVER.md` voor details.
