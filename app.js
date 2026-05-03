@@ -557,9 +557,10 @@ function renderMap() {
   mapMarkers.forEach((marker) => marker.remove());
   mapMarkers = [];
 
-  const countryPlaces = state.data.places
+  const countryPlacesAll = state.data.places
     .filter((p) => p.countryId === state.selectedCountryId)
     .filter(hasCoordinates);
+  const countryPlacesOnMap = countryPlacesAll.filter((p) => p.type !== "city");
 
   const selectedPlaceActivities = state.data.activities
     .filter((a) => a.placeId === state.selectedPlaceId)
@@ -569,7 +570,7 @@ function renderMap() {
     .filter((h) => h.placeId === state.selectedPlaceId)
     .filter(hasCoordinates);
 
-  if (!countryPlaces.length && !selectedPlaceActivities.length && !selectedPlaceHotels.length && !state.pendingPinTarget) {
+  if (!countryPlacesOnMap.length && !selectedPlaceActivities.length && !selectedPlaceHotels.length && !state.pendingPinTarget) {
     el.mapHint.textContent = state.locationStatusMessage || "Geen pins. Gebruik adres/link of “Pin op kaart”.";
     map.setView([20, 0], 2);
     setTimeout(() => map.invalidateSize(), 0);
@@ -581,14 +582,14 @@ function renderMap() {
     el.mapHint.textContent = `Pinmodus actief: tik op de kaart voor "${pendingLabel}".`;
     el.placeMap.style.cursor = "crosshair";
   } else {
-    const totalPins = countryPlaces.length + selectedPlaceActivities.length + selectedPlaceHotels.length;
+    const totalPins = countryPlacesOnMap.length + selectedPlaceActivities.length + selectedPlaceHotels.length;
     el.mapHint.textContent = state.locationStatusMessage || `Pins op kaart: ${totalPins}`;
     el.placeMap.style.cursor = "";
   }
 
   const bounds = [];
 
-  countryPlaces.forEach((place) => {
+  countryPlacesOnMap.forEach((place) => {
     const marker = L.marker([place.latitude, place.longitude])
       .addTo(map)
       .bindPopup(`<strong>${escapeHtml(place.name)}</strong><br>${place.type === "city" ? "Stad" : "Gebied"}`);
@@ -651,7 +652,11 @@ function renderMap() {
     bounds.push([hotel.latitude, hotel.longitude]);
   });
 
-  map.fitBounds(bounds, { padding: [20, 20] });
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [20, 20] });
+  } else {
+    map.setView([20, 0], 2);
+  }
   setTimeout(() => map.invalidateSize(), 0);
 }
 
@@ -1221,7 +1226,7 @@ function seedData() {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js?v=22").catch(() => null);
+    navigator.serviceWorker.register("./sw.js?v=23").catch(() => null);
   }
   window.addEventListener("online", () => {
     el.offlineBadge.textContent = "online";
@@ -1229,7 +1234,7 @@ function registerServiceWorker() {
   window.addEventListener("offline", () => {
     el.offlineBadge.textContent = "offline";
   });
-  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v22`;
+  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v23`;
 }
 
 function hasCoordinates(item) {
