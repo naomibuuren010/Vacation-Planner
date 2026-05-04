@@ -1,4 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
+/** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
+const APP_VERSION = 27;
 
 const __loaded = loadData();
 const state = {
@@ -290,7 +292,6 @@ function renderPlaceList(target, places) {
         <span class="name ${state.selectedPlaceId === place.id ? "active" : ""}" data-id="${place.id}">${escapeHtml(place.name)} <span class="meta">(${typeLabel})</span></span>
       </div>
       <div class="row-actions">
-        ${place.type === "city" ? "" : `<button class="secondary" data-loc-place="${place.id}">Pin op kaart</button>`}
         <button data-edit-place="${place.id}">Bewerk</button>
         <button class="danger" data-delete-place="${place.id}">Verwijder</button>
       </div>
@@ -315,16 +316,6 @@ function renderPlaceList(target, places) {
         saveAndRender();
       }, place.name);
     });
-
-    const pinPlaceBtn = li.querySelector(`[data-loc-place="${place.id}"]`);
-    if (pinPlaceBtn) {
-      pinPlaceBtn.addEventListener("click", () => {
-        state.pendingPinTarget = { kind: "place", id: place.id };
-        state.locationStatusMessage = `Pinmodus actief voor plek "${place.name}".`;
-        window.alert(`Tik nu op de kaart om de locatie voor "${place.name}" te zetten.`);
-        renderMap();
-      });
-    }
 
     li.querySelector(`[data-delete-place="${place.id}"]`).addEventListener("click", () => {
       if (!confirm(`Verwijder "${place.name}" en alle items?`)) return;
@@ -1275,16 +1266,31 @@ function seedData() {
 }
 
 function registerServiceWorker() {
+  const hadSwController = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js?v=25", { updateViaCache: "none" }).catch(() => null);
+    let reloadScheduled = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadSwController || reloadScheduled) return;
+      reloadScheduled = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker
+      .register(`./sw.js?v=${APP_VERSION}`, { updateViaCache: "none" })
+      .then((reg) => {
+        void reg.update();
+      })
+      .catch(() => null);
   }
+
   window.addEventListener("online", () => {
-    el.offlineBadge.textContent = "online";
+    el.offlineBadge.textContent = `online v${APP_VERSION}`;
   });
   window.addEventListener("offline", () => {
-    el.offlineBadge.textContent = "offline";
+    el.offlineBadge.textContent = `offline v${APP_VERSION}`;
   });
-  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v25`;
+  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v${APP_VERSION}`;
 }
 
 function hasCoordinates(item) {

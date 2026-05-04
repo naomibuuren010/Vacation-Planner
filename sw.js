@@ -1,7 +1,7 @@
-const CACHE_NAME = "vacation-planner-v25";
+const CACHE_NAME = "vacation-planner-v27";
 const ASSETS = [
   "./styles.css",
-  "./app.js?v=25",
+  "./app.js?v=27",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
@@ -23,6 +23,11 @@ self.addEventListener("activate", (event) => {
   );
   self.clients.claim();
 });
+
+/** Voorkomt dat HTTP-diskcache een oude index of app.js teruggeeft. */
+function fetchNoStore(request) {
+  return fetch(request, { cache: "no-store" });
+}
 
 function isDocumentRequest(request) {
   return request.method === "GET"
@@ -55,7 +60,7 @@ self.addEventListener("fetch", (event) => {
 
   if (isDocumentRequest(event.request)) {
     event.respondWith(
-      fetch(event.request)
+      fetchNoStore(event.request)
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
@@ -70,7 +75,7 @@ self.addEventListener("fetch", (event) => {
 
   if (isAppScriptRequest(event.request)) {
     event.respondWith(
-      fetch(event.request)
+      fetchNoStore(event.request)
         .then((response) => {
           if (response.ok) {
             const copy = response.clone();
