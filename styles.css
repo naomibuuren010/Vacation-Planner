@@ -112,9 +112,11 @@ body {
 .hero-bg {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(105deg, rgba(11, 16, 32, 0.92) 0%, rgba(11, 16, 32, 0.55) 45%, rgba(11, 16, 32, 0.25) 100%),
-    url("https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80") center/cover no-repeat;
+  background-color: #0b1428;
+  background-image: linear-gradient(105deg, rgba(11, 16, 32, 0.92) 0%, rgba(11, 16, 32, 0.55) 45%, rgba(11, 16, 32, 0.25) 100%);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 }
 
 .hero-content {

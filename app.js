@@ -1,6 +1,9 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 31;
+const APP_VERSION = 32;
+
+const DEFAULT_HERO_IMAGE =
+  "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
 
 const __loaded = loadData();
 const state = {
@@ -31,6 +34,8 @@ const el = {
   heroSubtitle: document.getElementById("heroSubtitle"),
   countryChips: document.getElementById("countryChips"),
   heroEditTripBtn: document.getElementById("heroEditTripBtn"),
+  heroBgBtn: document.getElementById("heroBgBtn"),
+  heroBg: document.getElementById("heroBg"),
   heroShareBtn: document.getElementById("heroShareBtn"),
   countriesList: document.getElementById("countriesList"),
   placesList: document.getElementById("placesList"),
@@ -76,6 +81,31 @@ function wireEvents() {
   if (el.heroEditTripBtn) {
     el.heroEditTripBtn.addEventListener("click", () => {
       document.getElementById("card-route")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  if (el.heroBgBtn) {
+    el.heroBgBtn.addEventListener("click", () => {
+      const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
+      if (!country) {
+        window.alert("Kies eerst een land (chips hierboven of bij Instellingen).");
+        return;
+      }
+      const cur = typeof country.heroImageUrl === "string" ? country.heroImageUrl : "";
+      const v = window.prompt(
+        `Achtergrondfoto voor “${country.name}”\n\n`
+        + "Plak een https-link naar een foto (jpg/png/webp), bijvoorbeeld van Unsplash.\n"
+        + "Leeg maken en OK = standaard tropische foto.\n"
+        + "Annuleren = niets wijzigen.",
+        cur
+      );
+      if (v === null) return;
+      const t = v.trim();
+      if (t && !isSafeHeroImageUrl(t)) {
+        window.alert("Alleen http(s)-links naar een afbeelding, of een kleine data:image-foto (base64), zijn toegestaan.");
+        return;
+      }
+      country.heroImageUrl = t;
+      saveAndRender();
     });
   }
   if (el.heroShareBtn) {
@@ -252,14 +282,34 @@ function renderHero() {
   const n = places.length;
   if (!country) {
     el.heroSubtitle.textContent = "Voeg een land toe om te beginnen.";
+    applyHeroBackground(null);
     return;
   }
   if (!n) {
     el.heroSubtitle.textContent = "Nog geen bestemmingen — voeg steden of gebieden toe bij Route.";
+    applyHeroBackground(country);
     return;
   }
   const daysPart = totalDays > 0 ? `${totalDays} dagen` : "dagen nog niet ingevuld";
   el.heroSubtitle.textContent = `${daysPart} · ${n} bestemming${n === 1 ? "" : "en"}`;
+  applyHeroBackground(country);
+}
+
+function isSafeHeroImageUrl(url) {
+  const t = String(url || "").trim();
+  if (!t) return false;
+  if (/^https?:\/\//i.test(t)) return true;
+  if (/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(t) && t.length < 2_500_000) return true;
+  return false;
+}
+
+function applyHeroBackground(country) {
+  if (!el.heroBg) return;
+  const grad = "linear-gradient(105deg, rgba(11, 16, 32, 0.92) 0%, rgba(11, 16, 32, 0.55) 45%, rgba(11, 16, 32, 0.25) 100%)";
+  const raw = country && typeof country.heroImageUrl === "string" ? country.heroImageUrl.trim() : "";
+  const img = raw && isSafeHeroImageUrl(raw) ? raw : DEFAULT_HERO_IMAGE;
+  const urlCss = /^data:image\//i.test(img) ? img.replace(/\\/g, "/").replace(/"/g, "'") : encodeURI(img);
+  el.heroBg.style.backgroundImage = `${grad}, url("${urlCss}")`;
 }
 
 function updateTripLayout() {
@@ -1335,7 +1385,13 @@ function loadData() {
 function normalizeData(parsed) {
   const rawPlaces = Array.isArray(parsed.places) ? parsed.places : [];
   const base = emptyData();
-  base.countries = Array.isArray(parsed.countries) ? parsed.countries : [];
+  base.countries = Array.isArray(parsed.countries)
+    ? parsed.countries.map((c) => ({
+      ...c,
+      name: typeof c.name === "string" && c.name.trim() ? c.name.trim() : "Land",
+      heroImageUrl: typeof c.heroImageUrl === "string" ? c.heroImageUrl.trim() : ""
+    }))
+    : [];
   base.places = Array.isArray(parsed.places) ? parsed.places.map((place) => ({
     ...place,
     sortOrder: typeof place.sortOrder === "number" && Number.isFinite(place.sortOrder) ? place.sortOrder : undefined,
