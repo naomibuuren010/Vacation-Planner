@@ -24,58 +24,89 @@
     <span id="offlineBadge" class="badge">offline klaar</span>
   </header>
 
-  <main class="container">
-    <section class="panel panel-landen">
-      <div class="panel-header">
-        <h2>Landen</h2>
-        <button id="addCountryBtn">+ Land</button>
-      </div>
-      <ul id="countriesList" class="list"></ul>
-    </section>
+  <div class="app-layout">
+    <aside class="app-sidebar" aria-label="Hoofdnavigatie">
+      <div class="sidebar-brand" aria-hidden="true">🏝️</div>
+      <nav class="sidebar-nav">
+        <a class="sidebar-link is-active" href="#section-reis">Reis</a>
+        <a class="sidebar-link" href="#card-activities">Activiteiten</a>
+        <a class="sidebar-link" href="#card-hotels">Hotels</a>
+        <a class="sidebar-link" href="#card-map">Kaart</a>
+        <a class="sidebar-link" href="#section-settings">Instellingen</a>
+      </nav>
+    </aside>
 
-    <div class="trip-stack" id="tripStack">
-      <article class="trip-card trip-card--places">
-        <div class="panel-header">
-          <h2 id="countryTitle">Plaatsen</h2>
-          <div class="actions">
-            <button id="addCityBtn" disabled>+ Stad</button>
-            <button id="addAreaBtn" disabled>+ Gebied</button>
+    <div class="app-main">
+      <div class="app-main-inner">
+        <section class="hero" id="section-reis">
+          <div class="hero-bg" aria-hidden="true"></div>
+          <div class="hero-content">
+            <h2 class="hero-title" id="heroTitle">Reis</h2>
+            <p class="hero-meta" id="heroSubtitle"></p>
+            <div class="hero-actions">
+              <button type="button" class="btn-hero btn-hero-primary" id="heroEditTripBtn">Bewerk reis</button>
+              <button type="button" class="btn-hero btn-hero-secondary" id="heroShareBtn">+ Delen</button>
+            </div>
+            <div class="country-chips" id="countryChips"></div>
+          </div>
+        </section>
+
+        <div class="trip-stack" id="tripStack">
+          <div class="dashboard-grid">
+            <article class="trip-card trip-card--places" id="card-route">
+              <div class="panel-header">
+                <h2 id="countryTitle">Route</h2>
+                <div class="actions">
+                  <button id="addCityBtn" disabled>+ Stad</button>
+                  <button id="addAreaBtn" disabled>+ Gebied</button>
+                </div>
+              </div>
+              <p class="panel-hint meta">Volgorde = route. Tik op een plek of op het nummer op de kaart om activiteiten en hotels te zien.</p>
+              <p class="trip-card-kicker">Route</p>
+              <ul id="placesList" class="list"></ul>
+            </article>
+
+            <article class="trip-card trip-card--map" id="card-map">
+              <div class="panel-header">
+                <h2>Kaart</h2>
+              </div>
+              <div id="placeMap" class="map map--dashboard"></div>
+              <p id="mapHint" class="meta map-hint">
+                Routenummers: tik om die bestemming te kiezen (activiteiten/hotels). Daarnaast pins voor activiteiten en hotels van de gekozen plek.
+              </p>
+            </article>
+
+            <article class="trip-card trip-card--activities" id="card-activities">
+              <div class="panel-header">
+                <h2 id="activitiesCardTitle">Activiteiten</h2>
+                <button id="addActivityBtn" disabled>+ Activiteit</button>
+              </div>
+              <p id="activitiesCardHint" class="panel-hint meta"></p>
+              <ul id="activitiesList" class="list"></ul>
+            </article>
+
+            <article class="trip-card trip-card--hotels" id="card-hotels">
+              <div class="panel-header">
+                <h2 id="hotelsCardTitle">Hotels</h2>
+                <button id="addHotelBtn" disabled>+ Hotel</button>
+              </div>
+              <p id="hotelsCardHint" class="panel-hint meta"></p>
+              <ul id="hotelsList" class="list"></ul>
+            </article>
           </div>
         </div>
-        <p class="panel-hint meta">Volgorde: bovenaan = eerst op reis. Dagen staan klein boven elke plek; pas aan via Bewerk.</p>
-        <p class="trip-card-kicker">Route</p>
-        <ul id="placesList" class="list"></ul>
-      </article>
 
-      <article class="trip-card trip-card--activities">
-        <div class="panel-header">
-          <h2 id="activitiesCardTitle">Activiteiten</h2>
-          <button id="addActivityBtn" disabled>+ Activiteit</button>
-        </div>
-        <p id="activitiesCardHint" class="panel-hint meta"></p>
-        <ul id="activitiesList" class="list"></ul>
-      </article>
-
-      <article class="trip-card trip-card--hotels">
-        <div class="panel-header">
-          <h2 id="hotelsCardTitle">Hotels</h2>
-          <button id="addHotelBtn" disabled>+ Hotel</button>
-        </div>
-        <p id="hotelsCardHint" class="panel-hint meta"></p>
-        <ul id="hotelsList" class="list"></ul>
-      </article>
-    </div>
-
-    <section class="panel panel-map">
-      <div class="panel-header">
-        <h2>Kaart met plekken</h2>
+        <section class="panel panel-settings" id="section-settings">
+          <div class="panel-header">
+            <h2>Landen beheren</h2>
+            <button id="addCountryBtn">+ Land</button>
+          </div>
+          <p class="panel-hint meta">Voeg landen toe, bewerk of verwijder. Tik op een land in de balk hierboven om snel te wisselen.</p>
+          <ul id="countriesList" class="list"></ul>
+        </section>
       </div>
-      <div id="placeMap" class="map"></div>
-      <p id="mapHint" class="meta">
-        Alleen activiteiten en hotels op de kaart (geen steden/gebieden). Google Maps-link met coördinaten = automatische pin.
-      </p>
-    </section>
-  </main>
+    </div>
+  </div>
 
   <dialog id="inputDialog">
     <form method="dialog" id="inputForm" novalidate>
@@ -97,7 +128,6 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>
-

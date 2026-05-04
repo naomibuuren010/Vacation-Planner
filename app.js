@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 28;
+const APP_VERSION = 29;
 
 const __loaded = loadData();
 const state = {
@@ -8,7 +8,9 @@ const state = {
   selectedCountryId: null,
   selectedPlaceId: null,
   pendingPinTarget: null,
-  locationStatusMessage: ""
+  locationStatusMessage: "",
+  /** Na klik op routenummer: kaart inzoomen op gekozen plek + pins. */
+  mapFocusAfterRender: null
 };
 if (__loaded.repaired) {
   try {
@@ -20,10 +22,16 @@ if (__loaded.repaired) {
 
 let map = null;
 let mapMarkers = [];
+let routePolyline = null;
 
 const el = {
-  main: document.querySelector("main.container"),
+  main: document.querySelector(".app-main-inner"),
   tripStack: document.getElementById("tripStack"),
+  heroTitle: document.getElementById("heroTitle"),
+  heroSubtitle: document.getElementById("heroSubtitle"),
+  countryChips: document.getElementById("countryChips"),
+  heroEditTripBtn: document.getElementById("heroEditTripBtn"),
+  heroShareBtn: document.getElementById("heroShareBtn"),
   countriesList: document.getElementById("countriesList"),
   placesList: document.getElementById("placesList"),
   activitiesList: document.getElementById("activitiesList"),
@@ -65,6 +73,30 @@ function boot() {
 }
 
 function wireEvents() {
+  if (el.heroEditTripBtn) {
+    el.heroEditTripBtn.addEventListener("click", () => {
+      document.getElementById("card-route")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+  if (el.heroShareBtn) {
+    el.heroShareBtn.addEventListener("click", () => {
+      const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
+      const title = country ? `Reis: ${country.name}` : "Vacation Planner";
+      if (navigator.share) {
+        navigator.share({ title, text: title, url: window.location.href }).catch(() => {});
+      } else {
+        window.prompt("Kopieer deze link:", window.location.href);
+      }
+    });
+  }
+
+  document.querySelectorAll(".sidebar-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      document.querySelectorAll(".sidebar-link").forEach((l) => l.classList.remove("is-active"));
+      link.classList.add("is-active");
+    });
+  });
+
   el.addCountryBtn.addEventListener("click", () => {
     promptInput("Nieuw land", "Landnaam", (value) => {
       state.data.countries.push({ id: uid(), name: value.trim() });
@@ -198,11 +230,36 @@ function wireEvents() {
 
 function renderAll() {
   updateTripLayout();
+  renderHero();
   renderCountries();
   renderPlaces();
   renderItems();
   renderMap();
   updateButtons();
+}
+
+function renderHero() {
+  if (!el.heroTitle || !el.heroSubtitle) return;
+  const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
+  el.heroTitle.textContent = country ? country.name : "Vacation Planner";
+  const places = state.data.places.filter((p) => p.countryId === state.selectedCountryId);
+  let totalDays = 0;
+  for (const p of places) {
+    if (typeof p.stayDays === "number" && p.stayDays >= 1) {
+      totalDays += p.stayDays;
+    }
+  }
+  const n = places.length;
+  if (!country) {
+    el.heroSubtitle.textContent = "Voeg een land toe om te beginnen.";
+    return;
+  }
+  if (!n) {
+    el.heroSubtitle.textContent = "Nog geen bestemmingen — voeg steden of gebieden toe bij Route.";
+    return;
+  }
+  const daysPart = totalDays > 0 ? `${totalDays} dagen` : "dagen nog niet ingevuld";
+  el.heroSubtitle.textContent = `${daysPart} · ${n} bestemming${n === 1 ? "" : "en"}`;
 }
 
 function updateTripLayout() {
@@ -214,8 +271,35 @@ function updateTripLayout() {
 
 function renderCountries() {
   const countries = [...state.data.countries].sort(byName("name"));
-  el.countriesList.innerHTML = "";
 
+  if (el.countryChips) {
+    el.countryChips.innerHTML = "";
+    if (!countries.length) {
+      const hint = document.createElement("span");
+      hint.className = "meta";
+      hint.textContent = "Geen landen — voeg er een toe bij Instellingen.";
+      el.countryChips.appendChild(hint);
+    } else {
+      countries.forEach((country) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `country-chip${state.selectedCountryId === country.id ? " is-active" : ""}`;
+        btn.textContent = country.name;
+        btn.dataset.id = country.id;
+        btn.addEventListener("click", () => {
+          if (state.selectedCountryId === country.id) return;
+          state.selectedCountryId = country.id;
+          state.selectedPlaceId = null;
+          state.pendingPinTarget = null;
+          state.locationStatusMessage = "";
+          renderAll();
+        });
+        el.countryChips.appendChild(btn);
+      });
+    }
+  }
+
+  el.countriesList.innerHTML = "";
   if (!countries.length) {
     el.countriesList.innerHTML = `<li><span class="meta">Nog geen landen</span></li>`;
     return;
@@ -259,7 +343,7 @@ function renderCountries() {
 
 function renderPlaces() {
   const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
-  el.countryTitle.textContent = country ? `${country.name}: Plaatsen` : "Plaatsen";
+  el.countryTitle.textContent = country ? `Route · ${country.name}` : "Route";
 
   const places = state.data.places
     .filter((p) => p.countryId === state.selectedCountryId)
@@ -282,14 +366,20 @@ function renderPlaceList(target, places) {
     return;
   }
 
-  places.forEach((place) => {
+  places.forEach((place, index) => {
     const li = document.createElement("li");
     const typeLabel = place.type === "city" ? "Stad" : "Gebied";
     const daysLine = formatPlaceStayDaysLine(place.stayDays);
+    const routeNum = index + 1;
     li.innerHTML = `
       <div class="place-row-left">
-        <div class="place-days">${daysLine}</div>
-        <span class="name ${state.selectedPlaceId === place.id ? "active" : ""}" data-id="${place.id}">${escapeHtml(place.name)} <span class="meta">(${typeLabel})</span></span>
+        <div class="route-row-head">
+          <span class="route-list-num" aria-hidden="true">${routeNum}</span>
+          <div class="place-row-main">
+            <div class="place-days">${daysLine}</div>
+            <span class="name ${state.selectedPlaceId === place.id ? "active" : ""}" data-id="${place.id}">${escapeHtml(place.name)} <span class="meta">(${typeLabel})</span></span>
+          </div>
+        </div>
       </div>
       <div class="row-actions">
         <button data-edit-place="${place.id}">Bewerk</button>
@@ -300,6 +390,7 @@ function renderPlaceList(target, places) {
     li.addEventListener("click", (event) => {
       if (event.target.closest(".row-actions")) return;
       state.selectedPlaceId = place.id;
+      state.mapFocusAfterRender = place.id;
       renderAll();
     });
 
@@ -334,13 +425,13 @@ function renderItems() {
   el.hotelsCardTitle.textContent = place ? `${placeName}: hotels` : "Hotels";
   if (el.activitiesCardHint) {
     el.activitiesCardHint.textContent = place
-      ? "Plak een Google Maps-link met coördinaten in het Maps-veld — dan verschijnt de pin automatisch op de kaart (kaart onderaan)."
-      : "Kies een plaats in de route hierboven.";
+      ? "Kies een andere stop via de route of tik op het nummer op de kaart. Maps-link met coördinaten = pin op de kaart."
+      : "Kies een bestemming in de route of op de kaart (nummers).";
   }
   if (el.hotelsCardHint) {
     el.hotelsCardHint.textContent = place
-      ? "Zet eerst je hotelwebsite; daarna een Google Maps-link — als daar coördinaten in zitten, komt de pin automatisch op de kaart (ook als de Maps-URL bij website stond)."
-      : "Kies een plaats in de route hierboven.";
+      ? "Zelfde plek als bij Activiteiten. Hotelwebsite + Maps-link; coördinaten = pin. Wissel van plek via route of kaartnummers."
+      : "Kies een bestemming in de route of op de kaart (nummers).";
   }
 
   const activities = state.data.activities
@@ -516,6 +607,29 @@ function ensurePlaceSelection() {
   }
 }
 
+function focusMapOnPlace(placeId) {
+  if (!map || !window.L || !placeId) return;
+  const place = state.data.places.find((p) => p.id === placeId);
+  if (!place) return;
+  const pts = [];
+  if (hasCoordinates(place)) {
+    pts.push([place.latitude, place.longitude]);
+  }
+  state.data.activities
+    .filter((a) => a.placeId === placeId && hasCoordinates(a))
+    .forEach((a) => pts.push([a.latitude, a.longitude]));
+  state.data.hotels
+    .filter((h) => h.placeId === placeId && hasCoordinates(h))
+    .forEach((h) => pts.push([h.latitude, h.longitude]));
+  if (!pts.length) return;
+  if (pts.length === 1) {
+    map.flyTo(pts[0], 12, { animate: true, duration: 0.45 });
+    return;
+  }
+  const b = L.latLngBounds(pts);
+  map.flyToBounds(b, { padding: [44, 44], maxZoom: 14, animate: true, duration: 0.55 });
+}
+
 function renderMap() {
   if (!el.placeMap) return;
   if (!window.L) {
@@ -535,7 +649,6 @@ function renderMap() {
     });
 
     cartoLayer.on("tileerror", () => {
-      // Fallback for reliability when CARTO tiles fail.
       if (!map.hasLayer(osmFallbackLayer)) {
         map.addLayer(osmFallbackLayer);
       }
@@ -554,6 +667,17 @@ function renderMap() {
 
   mapMarkers.forEach((marker) => marker.remove());
   mapMarkers = [];
+  if (routePolyline) {
+    map.removeLayer(routePolyline);
+    routePolyline = null;
+  }
+
+  const routePlaces = state.data.places
+    .filter((p) => p.countryId === state.selectedCountryId)
+    .sort(bySortOrderThenName)
+    .filter(hasCoordinates);
+
+  const routeLatLngs = routePlaces.map((p) => [p.latitude, p.longitude]);
 
   const selectedPlaceActivities = state.data.activities
     .filter((a) => a.placeId === state.selectedPlaceId)
@@ -563,9 +687,12 @@ function renderMap() {
     .filter((h) => h.placeId === state.selectedPlaceId)
     .filter(hasCoordinates);
 
-  if (!selectedPlaceActivities.length && !selectedPlaceHotels.length && !state.pendingPinTarget) {
+  const hasRoute = routeLatLngs.length > 0;
+  const hasDetailPins = selectedPlaceActivities.length + selectedPlaceHotels.length > 0;
+
+  if (!hasRoute && !hasDetailPins && !state.pendingPinTarget) {
     el.mapHint.textContent = state.locationStatusMessage
-      || "Geen pins voor deze plek. Steden en gebieden staan niet op de kaart — zet pins via activiteiten/hotels (Maps-link of “Pin op kaart”).";
+      || "Voeg coördinaten toe aan plekken (via seed of toekomstige invoer) of zet activiteiten/hotels met Maps-link om de kaart te vullen.";
     map.setView([20, 0], 2);
     setTimeout(() => map.invalidateSize(), 0);
     return;
@@ -576,12 +703,55 @@ function renderMap() {
     el.mapHint.textContent = `Pinmodus actief: tik op de kaart voor "${pendingLabel}".`;
     el.placeMap.style.cursor = "crosshair";
   } else {
-    const totalPins = selectedPlaceActivities.length + selectedPlaceHotels.length;
-    el.mapHint.textContent = state.locationStatusMessage || `Pins (activiteiten + hotels): ${totalPins}`;
+    const routeHint = hasRoute ? `${routePlaces.length} routestops` : "geen routepunten";
+    const detailHint = hasDetailPins
+      ? `${selectedPlaceActivities.length + selectedPlaceHotels.length} pins (huidige plek)`
+      : "geen activiteit/hotel-pins voor deze plek";
+    el.mapHint.textContent = state.locationStatusMessage
+      || `Kaart: ${routeHint} · ${detailHint}. Tik op een routenummer om die plek te kiezen.`;
     el.placeMap.style.cursor = "";
   }
 
-  const bounds = [];
+  if (routeLatLngs.length >= 2) {
+    routePolyline = L.polyline(routeLatLngs, {
+      color: "#38bdf8",
+      weight: 2.5,
+      opacity: 0.8,
+      dashArray: "4 10",
+      lineCap: "round"
+    }).addTo(map);
+  }
+
+  routePlaces.forEach((place, i) => {
+    const n = i + 1;
+    const isSel = place.id === state.selectedPlaceId;
+    const icon = L.divIcon({
+      className: "route-num-marker",
+      html: `<div class="route-num${isSel ? " is-active" : ""}">${n}</div>`,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+    const marker = L.marker([place.latitude, place.longitude], { icon, zIndexOffset: 200 + n })
+      .addTo(map)
+      .bindPopup(
+        `<strong>${escapeHtml(place.name)}</strong><br>${place.type === "city" ? "Stad" : "Gebied"}<br><span style="font-size:12px;opacity:.88">Tik = activiteiten &amp; hotels voor deze stop</span>`
+      );
+    marker.on("click", (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (state.selectedPlaceId !== place.id) {
+        state.selectedPlaceId = place.id;
+        state.pendingPinTarget = null;
+        state.locationStatusMessage = "";
+        state.mapFocusAfterRender = place.id;
+        renderAll();
+        return;
+      }
+      marker.openPopup();
+    });
+    mapMarkers.push(marker);
+  });
+
+  const bounds = [...routeLatLngs];
 
   selectedPlaceActivities.forEach((activity) => {
     const marker = L.circleMarker([activity.latitude, activity.longitude], {
@@ -640,11 +810,21 @@ function renderMap() {
     bounds.push([hotel.latitude, hotel.longitude]);
   });
 
+  const focusId = state.mapFocusAfterRender;
+  if (focusId) {
+    state.mapFocusAfterRender = null;
+  }
+
   if (bounds.length > 0) {
-    map.fitBounds(bounds, { padding: [20, 20] });
+    map.fitBounds(bounds, { padding: [22, 22], maxZoom: 12 });
   } else {
     map.setView([20, 0], 2);
   }
+
+  if (focusId) {
+    setTimeout(() => focusMapOnPlace(focusId), 380);
+  }
+
   setTimeout(() => map.invalidateSize(), 0);
 }
 
