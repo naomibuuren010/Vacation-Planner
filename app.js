@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 30;
+const APP_VERSION = 31;
 
 const __loaded = loadData();
 const state = {
@@ -657,7 +657,17 @@ function renderMap() {
       }
     });
 
+    const labelsLayer = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png",
+      {
+        maxZoom: 20,
+        opacity: 0.92,
+        attribution: "Labels &copy; OpenStreetMap contributors &copy; CARTO"
+      }
+    );
+
     baseSatelliteLayer.addTo(map);
+    labelsLayer.addTo(map);
 
     map.on("click", (event) => {
       if (!state.pendingPinTarget) return;
