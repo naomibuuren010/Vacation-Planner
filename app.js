@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 27;
+const APP_VERSION = 28;
 
 const __loaded = loadData();
 const state = {
@@ -555,11 +555,6 @@ function renderMap() {
   mapMarkers.forEach((marker) => marker.remove());
   mapMarkers = [];
 
-  const countryPlacesAll = state.data.places
-    .filter((p) => p.countryId === state.selectedCountryId)
-    .filter(hasCoordinates);
-  const countryPlacesOnMap = countryPlacesAll.filter((p) => p.type !== "city");
-
   const selectedPlaceActivities = state.data.activities
     .filter((a) => a.placeId === state.selectedPlaceId)
     .filter(hasCoordinates);
@@ -568,8 +563,9 @@ function renderMap() {
     .filter((h) => h.placeId === state.selectedPlaceId)
     .filter(hasCoordinates);
 
-  if (!countryPlacesOnMap.length && !selectedPlaceActivities.length && !selectedPlaceHotels.length && !state.pendingPinTarget) {
-    el.mapHint.textContent = state.locationStatusMessage || "Geen pins. Gebruik adres/link of “Pin op kaart”.";
+  if (!selectedPlaceActivities.length && !selectedPlaceHotels.length && !state.pendingPinTarget) {
+    el.mapHint.textContent = state.locationStatusMessage
+      || "Geen pins voor deze plek. Steden en gebieden staan niet op de kaart — zet pins via activiteiten/hotels (Maps-link of “Pin op kaart”).";
     map.setView([20, 0], 2);
     setTimeout(() => map.invalidateSize(), 0);
     return;
@@ -580,20 +576,12 @@ function renderMap() {
     el.mapHint.textContent = `Pinmodus actief: tik op de kaart voor "${pendingLabel}".`;
     el.placeMap.style.cursor = "crosshair";
   } else {
-    const totalPins = countryPlacesOnMap.length + selectedPlaceActivities.length + selectedPlaceHotels.length;
-    el.mapHint.textContent = state.locationStatusMessage || `Pins op kaart: ${totalPins}`;
+    const totalPins = selectedPlaceActivities.length + selectedPlaceHotels.length;
+    el.mapHint.textContent = state.locationStatusMessage || `Pins (activiteiten + hotels): ${totalPins}`;
     el.placeMap.style.cursor = "";
   }
 
   const bounds = [];
-
-  countryPlacesOnMap.forEach((place) => {
-    const marker = L.marker([place.latitude, place.longitude])
-      .addTo(map)
-      .bindPopup(`<strong>${escapeHtml(place.name)}</strong><br>${place.type === "city" ? "Stad" : "Gebied"}`);
-    mapMarkers.push(marker);
-    bounds.push([place.latitude, place.longitude]);
-  });
 
   selectedPlaceActivities.forEach((activity) => {
     const marker = L.circleMarker([activity.latitude, activity.longitude], {
