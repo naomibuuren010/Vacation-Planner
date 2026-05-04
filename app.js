@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 29;
+const APP_VERSION = 30;
 
 const __loaded = loadData();
 const state = {
@@ -639,22 +639,25 @@ function renderMap() {
 
   if (!map) {
     map = L.map(el.placeMap).setView([20, 0], 2);
-    const cartoLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 20,
-      attribution: "&copy; OpenStreetMap &copy; CARTO"
-    });
+    const baseSatelliteLayer = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+      }
+    );
     const osmFallbackLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap"
     });
 
-    cartoLayer.on("tileerror", () => {
+    baseSatelliteLayer.on("tileerror", () => {
       if (!map.hasLayer(osmFallbackLayer)) {
         map.addLayer(osmFallbackLayer);
       }
     });
 
-    cartoLayer.addTo(map);
+    baseSatelliteLayer.addTo(map);
 
     map.on("click", (event) => {
       if (!state.pendingPinTarget) return;
