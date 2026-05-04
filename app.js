@@ -166,7 +166,8 @@ function wireEvents() {
       addressInitial: "",
       mapsLinkInitial: "",
       includeWebsite: true,
-      websiteUrlInitial: ""
+      websiteUrlInitial: "",
+      websiteBeforeMaps: true
     });
     if (!payload) return;
 
@@ -289,7 +290,7 @@ function renderPlaceList(target, places) {
         <span class="name ${state.selectedPlaceId === place.id ? "active" : ""}" data-id="${place.id}">${escapeHtml(place.name)} <span class="meta">(${typeLabel})</span></span>
       </div>
       <div class="row-actions">
-        <button class="secondary" data-loc-place="${place.id}">Pin op kaart</button>
+        ${place.type === "city" ? "" : `<button class="secondary" data-loc-place="${place.id}">Pin op kaart</button>`}
         <button data-edit-place="${place.id}">Bewerk</button>
         <button class="danger" data-delete-place="${place.id}">Verwijder</button>
       </div>
@@ -315,12 +316,15 @@ function renderPlaceList(target, places) {
       }, place.name);
     });
 
-    li.querySelector(`[data-loc-place="${place.id}"]`).addEventListener("click", () => {
-      state.pendingPinTarget = { kind: "place", id: place.id };
-      state.locationStatusMessage = `Pinmodus actief voor plek "${place.name}".`;
-      window.alert(`Tik nu op de kaart om de locatie voor "${place.name}" te zetten.`);
-      renderMap();
-    });
+    const pinPlaceBtn = li.querySelector(`[data-loc-place="${place.id}"]`);
+    if (pinPlaceBtn) {
+      pinPlaceBtn.addEventListener("click", () => {
+        state.pendingPinTarget = { kind: "place", id: place.id };
+        state.locationStatusMessage = `Pinmodus actief voor plek "${place.name}".`;
+        window.alert(`Tik nu op de kaart om de locatie voor "${place.name}" te zetten.`);
+        renderMap();
+      });
+    }
 
     li.querySelector(`[data-delete-place="${place.id}"]`).addEventListener("click", () => {
       if (!confirm(`Verwijder "${place.name}" en alle items?`)) return;
@@ -339,12 +343,12 @@ function renderItems() {
   el.hotelsCardTitle.textContent = place ? `${placeName}: hotels` : "Hotels";
   if (el.activitiesCardHint) {
     el.activitiesCardHint.textContent = place
-      ? "Adres en Maps-link helpen om de pin automatisch te zetten (kaart onderaan)."
+      ? "Plak een Google Maps-link met coördinaten in het Maps-veld — dan verschijnt de pin automatisch op de kaart (kaart onderaan)."
       : "Kies een plaats in de route hierboven.";
   }
   if (el.hotelsCardHint) {
     el.hotelsCardHint.textContent = place
-      ? "Google Maps-link = pin op kaart (zoals activiteiten). Hotelwebsite = apart veld bij Bewerk, opent vanuit de lijst."
+      ? "Zet eerst je hotelwebsite; daarna een Google Maps-link — als daar coördinaten in zitten, komt de pin automatisch op de kaart (ook als de Maps-URL bij website stond)."
       : "Kies een plaats in de route hierboven.";
   }
 
@@ -438,9 +442,10 @@ function renderHotelList(hotels) {
 
   hotels.forEach((hotel) => {
     const addressText = hotel.address ? escapeHtml(hotel.address) : "geen adres";
-    const mapsMeta = hotel.mapsLink ? "maps-link" : "geen link";
-    const hasPinText = hasCoordinates(hotel) ? "pin aanwezig" : "geen pin";
+    const mapsMeta = hotel.mapsLink ? "Maps-link" : "geen Maps-link";
+    const hasPinText = hasCoordinates(hotel) ? "pin op kaart" : "geen pin";
     const websiteRow = formatHotelWebsiteRow(hotel.websiteUrl);
+    const mapsRow = formatHotelMapsRow(hotel.mapsLink);
 
     const li = document.createElement("li");
     li.innerHTML = `
@@ -448,6 +453,7 @@ function renderHotelList(hotels) {
         <div>${escapeHtml(hotel.name)}</div>
         <div class="meta">${addressText} · ${mapsMeta} · ${hasPinText}</div>
         <div class="meta hotel-link-row">${websiteRow}</div>
+        ${mapsRow ? `<div class="meta hotel-link-row">${mapsRow}</div>` : ""}
       </div>
       <div class="row-actions">
         <button class="secondary" data-loc-hotel="${hotel.id}">Pin op kaart</button>
@@ -470,7 +476,8 @@ function renderHotelList(hotels) {
         addressInitial: hotel.address || "",
         mapsLinkInitial: hotel.mapsLink || "",
         includeWebsite: true,
-        websiteUrlInitial: hotel.websiteUrl || ""
+        websiteUrlInitial: hotel.websiteUrl || "",
+        websiteBeforeMaps: true
       });
       if (!payload) return;
 
@@ -641,7 +648,9 @@ function renderMap() {
       .addTo(map)
       .bindPopup(`<strong>Hotel</strong><br>${escapeHtml(hotel.name)}`);
     marker.on("click", () => {
-      if (hotel.mapsLink && /^https?:\/\//i.test(hotel.mapsLink)) {
+      if (hotel.websiteUrl && isSafeWebUrl(hotel.websiteUrl)) {
+        window.open(hotel.websiteUrl.trim(), "_blank", "noopener,noreferrer");
+      } else if (hotel.mapsLink && /^https?:\/\//i.test(hotel.mapsLink)) {
         window.open(hotel.mapsLink, "_blank", "noopener,noreferrer");
       } else {
         marker.openPopup();
@@ -704,37 +713,58 @@ function resolvePendingLabel() {
 }
 
 async function resolveItemLocation({ item, itemType, currentName }) {
-  const parsed = extractCoordinatesFromGoogleMapsLink(item.mapsLink || "");
-  if (parsed) {
-    item.latitude = parsed.latitude;
-    item.longitude = parsed.longitude;
-    return { resolved: true, message: `Pin voor ${itemType} "${currentName}" gezet via maps-link.` };
+  const linksToTry = [item.mapsLink];
+  if (typeof item.websiteUrl === "string" && item.websiteUrl.trim()) {
+    linksToTry.push(item.websiteUrl);
+  }
+  for (const raw of linksToTry) {
+    const parsed = extractCoordinatesFromGoogleMapsLink(String(raw || ""));
+    if (parsed) {
+      item.latitude = parsed.latitude;
+      item.longitude = parsed.longitude;
+      return { resolved: true, message: `Pin voor ${itemType} "${currentName}" gezet via link (Google Maps).` };
+    }
   }
 
   return {
     resolved: false,
-    message: `Geen bruikbare coördinaten gevonden in maps-link voor ${itemType} "${currentName}". Gebruik eventueel "Pin op kaart".`
+    message: `Geen bruikbare coördinaten in de Google Maps-link voor ${itemType} "${currentName}". Korte goo.gl-links werken niet altijd — plak de volledige maps-URL, of gebruik "Pin op kaart".`
   };
 }
 
 function extractCoordinatesFromGoogleMapsLink(linkValue) {
   if (!linkValue || typeof linkValue !== "string") return null;
-  const value = linkValue.trim();
+  let value = linkValue.trim();
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    /* keep raw */
+  }
   if (!value) return null;
 
-  const patterns = [
+  const latLngPatterns = [
     /@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/, // .../@13.75,100.49,17z
     /!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/, // ...!3d13.75!4d100.49
     /[?&]ll=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
     /[?&]q=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
-    /[?&]query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/
+    /[?&]query=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/,
+    /[?&]center=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of latLngPatterns) {
     const match = value.match(pattern);
     if (!match) continue;
     const latitude = Number(match[1]);
     const longitude = Number(match[2]);
+    if (isValidCoordinate(latitude, longitude)) {
+      return { latitude, longitude };
+    }
+  }
+
+  const reversed = value.match(/!4d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/);
+  if (reversed) {
+    const longitude = Number(reversed[1]);
+    const latitude = Number(reversed[2]);
     if (isValidCoordinate(latitude, longitude)) {
       return { latitude, longitude };
     }
@@ -751,7 +781,8 @@ async function promptEntityDetails(title, {
   includePhoto = false,
   photoInitial = "",
   includeWebsite = false,
-  websiteUrlInitial = ""
+  websiteUrlInitial = "",
+  websiteBeforeMaps = false
 }) {
   const nameValue = window.prompt(`${title}\n${nameLabel}`, nameInitial || "");
   if (nameValue === null) return null;
@@ -761,20 +792,39 @@ async function promptEntityDetails(title, {
   const addressValue = window.prompt(`${title}\nAdres (optioneel)`, addressInitial || "");
   if (addressValue === null) return null;
 
-  const mapsLinkValue = window.prompt(
-    `${title}\nGoogle Maps link (optioneel, zelfde als bij activiteiten: voor pin op kaart)`,
-    mapsLinkInitial || ""
-  );
-  if (mapsLinkValue === null) return null;
-
   let websiteUrl = "";
-  if (includeWebsite) {
-    const websiteValue = window.prompt(
+  let mapsLinkValue = "";
+
+  if (includeWebsite && websiteBeforeMaps) {
+    const websitePrompt = window.prompt(
       `${title}\nHotelwebsite of bookinglink (optioneel, opent vanuit de lijst)`,
       websiteUrlInitial || ""
     );
-    if (websiteValue === null) return null;
-    websiteUrl = websiteValue.trim();
+    if (websitePrompt === null) return null;
+    websiteUrl = websitePrompt.trim();
+
+    const mapsPrompt = window.prompt(
+      `${title}\nGoogle Maps-link (optioneel — als hier coördinaten in zitten, komt de pin automatisch op de kaart)`,
+      mapsLinkInitial || ""
+    );
+    if (mapsPrompt === null) return null;
+    mapsLinkValue = mapsPrompt.trim();
+  } else {
+    const mapsPrompt = window.prompt(
+      `${title}\nGoogle Maps-link (optioneel — coördinaten in de link zetten de pin automatisch op de kaart)`,
+      mapsLinkInitial || ""
+    );
+    if (mapsPrompt === null) return null;
+    mapsLinkValue = mapsPrompt.trim();
+
+    if (includeWebsite) {
+      const websitePrompt = window.prompt(
+        `${title}\nHotelwebsite of bookinglink (optioneel, opent vanuit de lijst)`,
+        websiteUrlInitial || ""
+      );
+      if (websitePrompt === null) return null;
+      websiteUrl = websitePrompt.trim();
+    }
   }
 
   let photoUrl = "";
@@ -800,7 +850,7 @@ async function promptEntityDetails(title, {
   return {
     name: trimmedName,
     address: addressValue.trim(),
-    mapsLink: mapsLinkValue.trim(),
+    mapsLink: mapsLinkValue,
     websiteUrl,
     photoUrl
   };
@@ -1226,7 +1276,7 @@ function seedData() {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js?v=24", { updateViaCache: "none" }).catch(() => null);
+    navigator.serviceWorker.register("./sw.js?v=25", { updateViaCache: "none" }).catch(() => null);
   }
   window.addEventListener("online", () => {
     el.offlineBadge.textContent = "online";
@@ -1234,7 +1284,7 @@ function registerServiceWorker() {
   window.addEventListener("offline", () => {
     el.offlineBadge.textContent = "offline";
   });
-  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v24`;
+  el.offlineBadge.textContent = `${navigator.onLine ? "online" : "offline"} v25`;
 }
 
 function hasCoordinates(item) {
@@ -1313,8 +1363,18 @@ function formatHotelWebsiteRow(websiteUrl) {
   }
   if (isSafeWebUrl(raw)) {
     const display = truncateForDisplay(raw, 72);
-    return `<a class="inline-link" href="${escapeAttr(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)}</a>`;
+    return `<span class="meta">Hotel: </span><a class="inline-link" href="${escapeAttr(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)}</a>`;
   }
   return escapeHtml(raw);
+}
+
+function formatHotelMapsRow(mapsLink) {
+  const raw = mapsLink && String(mapsLink).trim();
+  if (!raw) return "";
+  if (isSafeWebUrl(raw)) {
+    const display = truncateForDisplay(raw, 72);
+    return `<span class="meta">Google Maps: </span><a class="inline-link" href="${escapeAttr(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)}</a>`;
+  }
+  return `<span class="meta">Google Maps: </span>${escapeHtml(truncateForDisplay(raw, 72))}`;
 }
 
