@@ -2,7 +2,7 @@ const STORAGE_KEY = "vacation_planner_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 40;
+const APP_VERSION = 41;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -265,6 +265,12 @@ function wireEvents() {
     state.locationStatusMessage = status.message;
     saveAndRender();
   });
+
+  let resizeRenderTimer;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeRenderTimer);
+    resizeRenderTimer = setTimeout(() => renderAll(), 200);
+  });
 }
 
 function renderAll() {
@@ -420,22 +426,39 @@ function renderCountries() {
   });
 }
 
+function placesForSelectedCountry() {
+  if (!state.selectedCountryId) return [];
+  return state.data.places
+    .filter((p) => p.countryId === state.selectedCountryId)
+    .sort(bySortOrderThenName);
+}
+
+/** Zorg dat gekozen plek bij het land hoort (voorkomt lege activiteiten/hotels op mobiel). */
+function syncSelectedPlaceWithCountry() {
+  const places = placesForSelectedCountry();
+  if (!places.length) {
+    state.selectedPlaceId = null;
+    return;
+  }
+  if (!state.selectedPlaceId || !places.some((p) => p.id === state.selectedPlaceId)) {
+    state.selectedPlaceId = places[0].id;
+  }
+}
+
+function isMobileTripLayout() {
+  try {
+    return window.matchMedia("(max-width: 960px)").matches;
+  } catch {
+    return false;
+  }
+}
+
 function renderPlaces() {
   const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
   el.countryTitle.textContent = country ? `Route · ${country.name}` : "Route";
 
-  const places = state.data.places
-    .filter((p) => p.countryId === state.selectedCountryId)
-    .sort(bySortOrderThenName);
-
-  if (places.length && !places.some((p) => p.id === state.selectedPlaceId)) {
-    state.selectedPlaceId = places[0].id;
-  }
-  if (!places.length) {
-    state.selectedPlaceId = null;
-  }
-
-  renderPlaceList(el.placesList, places);
+  syncSelectedPlaceWithCountry();
+  renderPlaceList(el.placesList, placesForSelectedCountry());
 }
 
 function renderPlaceList(target, places) {
@@ -498,27 +521,57 @@ function renderPlaceList(target, places) {
 }
 
 function renderItems() {
+  syncSelectedPlaceWithCountry();
+
+  const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
+  const placesInCountry = placesForSelectedCountry();
+  const placeIdSet = new Set(placesInCountry.map((p) => p.id));
+  const mobileAgg = isMobileTripLayout() && Boolean(state.selectedCountryId && placeIdSet.size);
+
   const place = state.data.places.find((p) => p.id === state.selectedPlaceId);
   const placeName = place ? place.name : "—";
-  el.activitiesCardTitle.textContent = place ? `${placeName}: activiteiten` : "Activiteiten";
-  el.hotelsCardTitle.textContent = place ? `${placeName}: hotels` : "Hotels";
-  if (el.activitiesCardHint) {
-    el.activitiesCardHint.textContent = place
-      ? "Kies een andere stop via de route of tik op het nummer op de kaart. Maps-link met coördinaten = pin op de kaart."
-      : "Kies een bestemming in de route of op de kaart (nummers).";
-  }
-  if (el.hotelsCardHint) {
-    el.hotelsCardHint.textContent = place
-      ? "Zelfde plek als bij Activiteiten. Hotelwebsite + Maps-link; coördinaten = pin. Wissel van plek via route of kaartnummers."
-      : "Kies een bestemming in de route of op de kaart (nummers).";
+
+  let activities;
+  let hotels;
+  if (mobileAgg) {
+    activities = state.data.activities
+      .filter((a) => placeIdSet.has(a.placeId))
+      .sort(bySortOrderThenActivityTitle);
+    hotels = state.data.hotels
+      .filter((h) => placeIdSet.has(h.placeId))
+      .sort(bySortOrderThenHotelName);
+  } else {
+    activities = state.data.activities
+      .filter((a) => a.placeId === state.selectedPlaceId)
+      .sort(bySortOrderThenActivityTitle);
+    hotels = state.data.hotels
+      .filter((h) => h.placeId === state.selectedPlaceId)
+      .sort(bySortOrderThenHotelName);
   }
 
-  const activities = state.data.activities
-    .filter((a) => a.placeId === state.selectedPlaceId)
-    .sort(bySortOrderThenActivityTitle);
-  const hotels = state.data.hotels
-    .filter((h) => h.placeId === state.selectedPlaceId)
-    .sort(bySortOrderThenHotelName);
+  if (mobileAgg && country) {
+    el.activitiesCardTitle.textContent = `Activiteiten · ${country.name}`;
+    el.hotelsCardTitle.textContent = `Hotels · ${country.name}`;
+    if (el.activitiesCardHint) {
+      el.activitiesCardHint.textContent = "Alle stops van deze route op een rij. Tik een plek bij Route om die als hoofdstop op de kaart te tonen.";
+    }
+    if (el.hotelsCardHint) {
+      el.hotelsCardHint.textContent = "Alle hotels van dit land; onder elke titel staat bij welke stop ze horen.";
+    }
+  } else {
+    el.activitiesCardTitle.textContent = place ? `${placeName}: activiteiten` : "Activiteiten";
+    el.hotelsCardTitle.textContent = place ? `${placeName}: hotels` : "Hotels";
+    if (el.activitiesCardHint) {
+      el.activitiesCardHint.textContent = place
+        ? "Kies een andere stop via de route of tik op het nummer op de kaart. Maps-link met coördinaten = pin op de kaart."
+        : "Kies een bestemming in de route of op de kaart (nummers).";
+    }
+    if (el.hotelsCardHint) {
+      el.hotelsCardHint.textContent = place
+        ? "Zelfde plek als bij Activiteiten. Hotelwebsite + Maps-link; coördinaten = pin. Wissel van plek via route of kaartnummers."
+        : "Kies een bestemming in de route of op de kaart (nummers).";
+    }
+  }
 
   renderActivityList(activities);
   renderHotelList(hotels);
@@ -699,14 +752,7 @@ function updateButtons() {
 }
 
 function ensurePlaceSelection() {
-  if (state.selectedPlaceId) return;
-  const firstPlace = state.data.places
-    .filter((p) => p.countryId === state.selectedCountryId)
-    .sort(bySortOrderThenName)[0];
-  if (firstPlace) {
-    state.selectedPlaceId = firstPlace.id;
-    renderAll();
-  }
+  syncSelectedPlaceWithCountry();
 }
 
 function focusMapOnPlace(placeId) {
