@@ -129,7 +129,7 @@ function wireEvents() {
 
   el.addCountryBtn.addEventListener("click", () => {
     promptInput("Nieuw land", "Landnaam", (value) => {
-      state.data.countries.push({ id: uid(), name: value.trim() });
+      state.data.countries.push({ id: uid(), name: value.trim(), heroImageUrl: "" });
       saveAndRender();
     });
   });
@@ -1318,7 +1318,7 @@ function recoverMissingCountries(data) {
   const needed = [...new Set(data.places.map((p) => p.countryId).filter(Boolean))];
   for (const cid of needed) {
     if (!countryIds.has(cid)) {
-      data.countries.push({ id: cid, name: "Hersteld (oude plekken)" });
+      data.countries.push({ id: cid, name: "Hersteld (oude plekken)", heroImageUrl: "" });
       countryIds.add(cid);
       changed = true;
     }
@@ -1451,7 +1451,7 @@ function saveAndRender() {
 }
 
 function seedData() {
-  const thailand = { id: uid(), name: "Thailand" };
+  const thailand = { id: uid(), name: "Thailand", heroImageUrl: "" };
   const rows = [
     { type: "city", name: "Bangkok", latitude: 13.7563, longitude: 100.5018, stayDays: 2 },
     { type: "city", name: "Chiang Mai", latitude: 18.7883, longitude: 98.9853, stayDays: 3 },
