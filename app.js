@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 35;
+const APP_VERSION = 36;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -13,7 +13,8 @@ const state = {
   pendingPinTarget: null,
   locationStatusMessage: "",
   /** Na klik op routenummer: kaart inzoomen op gekozen plek + pins. */
-  mapFocusAfterRender: null
+  mapFocusAfterRender: null,
+  geocodeInFlight: false
 };
 if (__loaded.repaired) {
   try {
@@ -753,9 +754,19 @@ function renderMap() {
   const hasRoute = routeLatLngs.length > 0;
   const hasDetailPins = selectedPlaceActivities.length + selectedPlaceHotels.length > 0;
 
+  if (!hasRoute && !state.geocodeInFlight) {
+    const placesInCountry = state.data.places.filter((p) => p.countryId === state.selectedCountryId);
+    const missingPlaceCoords = placesInCountry.filter((p) => !getPlaceCoordinatesForRoute(p));
+    if (missingPlaceCoords.length > 0) {
+      void geocodeMissingPlaceCoordinates(state.selectedCountryId);
+    }
+  }
+
   if (!hasRoute && !hasDetailPins && !state.pendingPinTarget) {
     el.mapHint.textContent = state.locationStatusMessage
-      || "Voeg coördinaten toe aan plekken (via seed of toekomstige invoer) of zet activiteiten/hotels met Maps-link om de kaart te vullen.";
+      || (state.geocodeInFlight
+        ? "Locaties ophalen voor route... even wachten."
+        : "Voeg coördinaten toe aan plekken (via seed of toekomstige invoer) of zet activiteiten/hotels met Maps-link om de kaart te vullen.");
     map.setView([20, 0], 2);
     setTimeout(() => map.invalidateSize(), 0);
     return;
@@ -904,6 +915,50 @@ function getPlaceCoordinatesForRoute(place) {
   if (fromHotel) return [fromHotel.latitude, fromHotel.longitude];
 
   return null;
+}
+
+async function geocodeMissingPlaceCoordinates(countryId) {
+  if (state.geocodeInFlight || !countryId) return;
+  const country = state.data.countries.find((c) => c.id === countryId);
+  if (!country) return;
+
+  const places = state.data.places
+    .filter((p) => p.countryId === countryId)
+    .filter((p) => !getPlaceCoordinatesForRoute(p));
+  if (!places.length) return;
+
+  state.geocodeInFlight = true;
+  let changed = false;
+
+  try {
+    for (const place of places) {
+      const query = `${place.name}, ${country.name}`;
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`;
+      try {
+        const response = await fetch(url, { headers: { Accept: "application/json" } });
+        if (!response.ok) continue;
+        const results = await response.json();
+        if (!Array.isArray(results) || !results.length) continue;
+        const first = results[0];
+        const lat = Number(first.lat);
+        const lon = Number(first.lon);
+        if (!isValidCoordinate(lat, lon)) continue;
+        place.latitude = lat;
+        place.longitude = lon;
+        changed = true;
+      } catch {
+        // Ignore geocoding errors per place; user can still pin manually.
+      }
+    }
+  } finally {
+    state.geocodeInFlight = false;
+  }
+
+  if (changed) {
+    saveAndRender();
+  } else {
+    renderMap();
+  }
 }
 
 function applyManualPin(lat, lng, target) {
