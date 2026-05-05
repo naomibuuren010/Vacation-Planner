@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 32;
+const APP_VERSION = 33;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -577,7 +577,6 @@ function renderHotelList(hotels) {
     const mapsMeta = hotel.mapsLink ? "Maps-link" : "geen Maps-link";
     const hasPinText = hasCoordinates(hotel) ? "pin op kaart" : "geen pin";
     const websiteRow = formatHotelWebsiteRow(hotel.websiteUrl);
-    const mapsRow = formatHotelMapsRow(hotel.mapsLink);
 
     const li = document.createElement("li");
     li.innerHTML = `
@@ -585,7 +584,6 @@ function renderHotelList(hotels) {
         <div>${escapeHtml(hotel.name)}</div>
         <div class="meta">${addressText} · ${mapsMeta} · ${hasPinText}</div>
         <div class="meta hotel-link-row">${websiteRow}</div>
-        ${mapsRow ? `<div class="meta hotel-link-row">${mapsRow}</div>` : ""}
       </div>
       <div class="row-actions">
         <button class="secondary" data-loc-hotel="${hotel.id}">Pin op kaart</button>
