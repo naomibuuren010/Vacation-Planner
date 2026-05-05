@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 34;
+const APP_VERSION = 35;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -1448,7 +1448,53 @@ function normalizeData(parsed) {
   let repaired = false;
   if (recoverMissingCountries(base)) repaired = true;
   if (reattachOrphanItemsByOldPlaceNames(base, rawPlaces)) repaired = true;
+  if (backfillCoordinatesFromExistingMapsLinks(base)) repaired = true;
+  if (backfillPlaceCoordinatesFromItems(base)) repaired = true;
   return { data: base, repaired };
+}
+
+function backfillCoordinatesFromExistingMapsLinks(data) {
+  let changed = false;
+  for (const activity of data.activities) {
+    if (hasCoordinates(activity)) continue;
+    const parsed = extractCoordinatesFromGoogleMapsLink(activity.mapsLink || "");
+    if (!parsed) continue;
+    activity.latitude = parsed.latitude;
+    activity.longitude = parsed.longitude;
+    changed = true;
+  }
+  for (const hotel of data.hotels) {
+    if (hasCoordinates(hotel)) continue;
+    const parsed =
+      extractCoordinatesFromGoogleMapsLink(hotel.mapsLink || "")
+      || extractCoordinatesFromGoogleMapsLink(hotel.websiteUrl || "");
+    if (!parsed) continue;
+    hotel.latitude = parsed.latitude;
+    hotel.longitude = parsed.longitude;
+    changed = true;
+  }
+  return changed;
+}
+
+function backfillPlaceCoordinatesFromItems(data) {
+  let changed = false;
+  for (const place of data.places) {
+    if (hasCoordinates(place)) continue;
+    const activityWithCoords = data.activities.find((a) => a.placeId === place.id && hasCoordinates(a));
+    if (activityWithCoords) {
+      place.latitude = activityWithCoords.latitude;
+      place.longitude = activityWithCoords.longitude;
+      changed = true;
+      continue;
+    }
+    const hotelWithCoords = data.hotels.find((h) => h.placeId === place.id && hasCoordinates(h));
+    if (hotelWithCoords) {
+      place.latitude = hotelWithCoords.latitude;
+      place.longitude = hotelWithCoords.longitude;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function emptyData() {
