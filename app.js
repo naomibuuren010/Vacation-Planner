@@ -1,6 +1,8 @@
 const STORAGE_KEY = "vacation_planner_v1";
+/** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
+const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 38;
+const APP_VERSION = 39;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -1581,6 +1583,7 @@ function normalizeData(parsed) {
   if (reattachOrphanItemsByOldPlaceNames(base, rawPlaces)) repaired = true;
   if (backfillCoordinatesFromExistingMapsLinks(base)) repaired = true;
   if (backfillPlaceCoordinatesFromItems(base)) repaired = true;
+  if (mergeSampleIcelandIfMissing(base)) repaired = true;
   return { data: base, repaired };
 }
 
@@ -1635,6 +1638,96 @@ function emptyData() {
     activities: [],
     hotels: []
   };
+}
+
+function countryNameIsIceland(name) {
+  const t = String(name || "").trim().toLowerCase();
+  return t === "ijsland" || t === "iceland" || t === "ísland";
+}
+
+function dataHasIcelandCountry(data) {
+  return data.countries.some((c) => countryNameIsIceland(c.name));
+}
+
+/** Voegt standaard IJsland-route toe (alleen data-mutatie). */
+function pushIcelandSampleTripInto(data) {
+  const iceland = { id: uid(), name: "IJsland", heroImageUrl: "" };
+  const rows = [
+    { type: "city", name: "Reykjavik", latitude: 64.1355, longitude: -21.8954, stayDays: 2 },
+    { type: "area", name: "Vík", latitude: 63.4194, longitude: -18.9958, stayDays: 2 },
+    { type: "city", name: "Höfn", latitude: 64.2539, longitude: -15.2082, stayDays: 1 },
+    { type: "area", name: "Egilsstaðir", latitude: 65.2619, longitude: -14.4048, stayDays: 1 },
+    { type: "city", name: "Akureyri", latitude: 65.6815, longitude: -18.0907, stayDays: 2 },
+    { type: "area", name: "Snæfellsnes", latitude: 64.8075, longitude: -23.7732, stayDays: 1 }
+  ];
+  const places = rows.map((row, index) => ({
+    id: uid(),
+    countryId: iceland.id,
+    type: row.type,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    stayDays: row.stayDays,
+    sortOrder: index
+  }));
+  const reykjavik = places[0];
+  data.countries.push(iceland);
+  data.places.push(...places);
+  data.activities.push({
+    id: uid(),
+    placeId: reykjavik.id,
+    title: "Hallgrímskirkja & binnenstad",
+    notes: "",
+    date: null,
+    address: "Reykjavik",
+    mapsLink: "",
+    photoUrl: "https://images.unsplash.com/photo-1504893524553-b855bce32c67?w=200&q=80",
+    latitude: 64.1414,
+    longitude: -21.9267,
+    sortOrder: 0
+  });
+  data.hotels.push({
+    id: uid(),
+    placeId: reykjavik.id,
+    name: "Hotel Reykjavik Centrum",
+    address: "Centrum",
+    mapsLink: "https://www.google.com/maps/search/?api=1&query=Hotel+Reykjavik+Centrum+Iceland",
+    websiteUrl: "",
+    photoUrl: "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=200&q=80",
+    priceLabel: "€95",
+    latitude: 64.1473,
+    longitude: -21.9426,
+    sortOrder: 0
+  });
+}
+
+/**
+ * Bestaande installs (alleen Thailand e.d.) krijgen één keer demo-IJsland.
+ * Als je IJsland bewust verwijdert, komt het niet terug (localStorage-vlag).
+ */
+function mergeSampleIcelandIfMissing(data) {
+  if (dataHasIcelandCountry(data)) {
+    try {
+      localStorage.setItem(ICELAND_SAMPLE_LS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+  let skip = false;
+  try {
+    skip = localStorage.getItem(ICELAND_SAMPLE_LS_KEY) === "1";
+  } catch {
+    skip = false;
+  }
+  if (skip) return false;
+  pushIcelandSampleTripInto(data);
+  try {
+    localStorage.setItem(ICELAND_SAMPLE_LS_KEY, "1");
+  } catch {
+    /* zonder vlag kan bij volgende load dubbel — zeldzaam */
+  }
+  return true;
 }
 
 function saveAndRender() {
@@ -1694,6 +1787,14 @@ function seedData() {
     longitude: null,
     sortOrder: 0
   });
+
+  pushIcelandSampleTripInto(state.data);
+
+  try {
+    localStorage.setItem(ICELAND_SAMPLE_LS_KEY, "1");
+  } catch {
+    /* ignore */
+  }
 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
 }

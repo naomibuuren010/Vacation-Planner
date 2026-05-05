@@ -1,7 +1,7 @@
-const CACHE_NAME = "vacation-planner-v38";
+const CACHE_NAME = "vacation-planner-v39";
 const ASSETS = [
   "./styles.css",
-  "./app.js?v=38",
+  "./app.js?v=39",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
