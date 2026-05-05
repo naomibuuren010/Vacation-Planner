@@ -2,7 +2,7 @@ const STORAGE_KEY = "vacation_planner_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 39;
+const APP_VERSION = 40;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -370,7 +370,6 @@ function renderCountries() {
         btn.addEventListener("click", () => {
           if (state.selectedCountryId === country.id) return;
           state.selectedCountryId = country.id;
-          state.selectedPlaceId = null;
           state.pendingPinTarget = null;
           state.locationStatusMessage = "";
           renderAll();
@@ -399,7 +398,6 @@ function renderCountries() {
     li.addEventListener("click", (event) => {
       if (event.target.closest(".row-actions")) return;
       state.selectedCountryId = country.id;
-      state.selectedPlaceId = null;
       state.pendingPinTarget = null;
       state.locationStatusMessage = "";
       renderAll();
@@ -538,7 +536,7 @@ function renderActivityList(activities) {
     const subtitle = place?.name || activity.address || "";
     const previewSrc = buildActivityPreviewImage(activity);
     const thumbHtml = previewSrc
-      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" alt="">`
+      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" width="52" height="52" loading="lazy" decoding="async" alt="">`
       : `<div class="list-thumb list-thumb--placeholder" aria-hidden="true"></div>`;
 
     const li = document.createElement("li");
@@ -615,7 +613,7 @@ function renderHotelList(hotels) {
     const subtitle = [placeName, nights].filter(Boolean).join(" • ");
     const previewSrc = buildHotelPreviewImage(hotel);
     const thumbHtml = previewSrc
-      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" alt="">`
+      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" width="52" height="52" loading="lazy" decoding="async" alt="">`
       : `<div class="list-thumb list-thumb--placeholder" aria-hidden="true"></div>`;
     const priceHtml = hotel.priceLabel
       ? `<div class="list-row-price">${escapeHtml(hotel.priceLabel)}</div>`
