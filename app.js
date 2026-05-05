@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 36;
+const APP_VERSION = 37;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -232,7 +232,11 @@ function wireEvents() {
       mapsLinkInitial: "",
       includeWebsite: true,
       websiteUrlInitial: "",
-      websiteBeforeMaps: true
+      websiteBeforeMaps: true,
+      includePhoto: true,
+      photoInitial: "",
+      includePrice: true,
+      priceInitial: ""
     });
     if (!payload) return;
 
@@ -243,6 +247,8 @@ function wireEvents() {
       address: payload.address,
       mapsLink: payload.mapsLink,
       websiteUrl: payload.websiteUrl ?? "",
+      photoUrl: payload.photoUrl || "",
+      priceLabel: payload.priceLabel || "",
       latitude: null,
       longitude: null,
       sortOrder: nextHotelSortOrder(state.selectedPlaceId)
@@ -302,6 +308,28 @@ function isSafeHeroImageUrl(url) {
   if (/^https?:\/\//i.test(t)) return true;
   if (/^data:image\/(png|jpeg|jpg|webp);base64,/i.test(t) && t.length < 2_500_000) return true;
   return false;
+}
+
+function buildEntityPreviewImage(photoUrl) {
+  const t = String(photoUrl || "").trim();
+  return t && isSafeHeroImageUrl(t) ? t : "";
+}
+
+function buildActivityPreviewImage(activity) {
+  return buildEntityPreviewImage(activity?.photoUrl);
+}
+
+function buildHotelPreviewImage(hotel) {
+  return buildEntityPreviewImage(hotel?.photoUrl);
+}
+
+function lookupPlace(placeId) {
+  return state.data.places.find((p) => p.id === placeId) ?? null;
+}
+
+function formatNightsLabel(stayDays) {
+  if (typeof stayDays !== "number" || !Number.isFinite(stayDays) || stayDays <= 0) return "";
+  return stayDays === 1 ? "1 nacht" : `${Math.round(stayDays)} nachten`;
 }
 
 function applyHeroBackground(country) {
@@ -504,16 +532,21 @@ function renderActivityList(activities) {
   }
 
   activities.forEach((activity) => {
-    const addressText = activity.address ? escapeHtml(activity.address) : "geen adres";
-    const linkText = activity.mapsLink ? "maps-link" : "geen link";
-    const photoText = activity.photoUrl ? "foto" : "geen foto";
-    const hasPinText = hasCoordinates(activity) ? "pin aanwezig" : "geen pin";
+    const place = lookupPlace(activity.placeId);
+    const subtitle = place?.name || activity.address || "";
+    const previewSrc = buildActivityPreviewImage(activity);
+    const thumbHtml = previewSrc
+      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" alt="">`
+      : `<div class="list-thumb list-thumb--placeholder" aria-hidden="true"></div>`;
 
     const li = document.createElement("li");
     li.innerHTML = `
-      <div>
-        <div>${escapeHtml(activity.title)}</div>
-        <div class="meta">${addressText} · ${linkText} · ${photoText} · ${hasPinText}</div>
+      <div class="list-row-main">
+        <div class="list-thumb-wrap">${thumbHtml}</div>
+        <div class="list-row-text">
+          <div class="list-row-title">${escapeHtml(activity.title)}</div>
+          <div class="list-row-sub">${escapeHtml(subtitle)}</div>
+        </div>
       </div>
       <div class="row-actions">
         <button class="secondary" data-loc-activity="${activity.id}">Pin op kaart</button>
@@ -543,7 +576,7 @@ function renderActivityList(activities) {
       activity.title = payload.name;
       activity.address = payload.address;
       activity.mapsLink = payload.mapsLink;
-      activity.photoUrl = payload.photoUrl;
+      activity.photoUrl = payload.photoUrl || "";
 
       const status = await resolveItemLocation({
         item: activity,
@@ -574,17 +607,31 @@ function renderHotelList(hotels) {
   }
 
   hotels.forEach((hotel) => {
-    const addressText = hotel.address ? escapeHtml(hotel.address) : "geen adres";
-    const mapsMeta = hotel.mapsLink ? "Maps-link" : "geen Maps-link";
-    const hasPinText = hasCoordinates(hotel) ? "pin op kaart" : "geen pin";
-    const websiteRow = formatHotelWebsiteRow(hotel.websiteUrl);
+    const place = lookupPlace(hotel.placeId);
+    const placeName = place?.name || "";
+    const nights = formatNightsLabel(place?.stayDays);
+    const subtitle = [placeName, nights].filter(Boolean).join(" • ");
+    const previewSrc = buildHotelPreviewImage(hotel);
+    const thumbHtml = previewSrc
+      ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" alt="">`
+      : `<div class="list-thumb list-thumb--placeholder" aria-hidden="true"></div>`;
+    const priceHtml = hotel.priceLabel
+      ? `<div class="list-row-price">${escapeHtml(hotel.priceLabel)}</div>`
+      : `<div class="list-row-price list-row-price--muted">—</div>`;
+    const websiteBlock = hotel.websiteUrl && String(hotel.websiteUrl).trim()
+      ? `<div class="meta hotel-link-row hotel-link-row--compact">${formatHotelWebsiteRow(hotel.websiteUrl)}</div>`
+      : "";
 
     const li = document.createElement("li");
     li.innerHTML = `
-      <div>
-        <div>${escapeHtml(hotel.name)}</div>
-        <div class="meta">${addressText} · ${mapsMeta} · ${hasPinText}</div>
-        <div class="meta hotel-link-row">${websiteRow}</div>
+      <div class="list-row-main">
+        <div class="list-thumb-wrap">${thumbHtml}</div>
+        <div class="list-row-text">
+          <div class="list-row-title">${escapeHtml(hotel.name)}</div>
+          <div class="list-row-sub">${escapeHtml(subtitle || "—")}</div>
+          ${websiteBlock}
+        </div>
+        ${priceHtml}
       </div>
       <div class="row-actions">
         <button class="secondary" data-loc-hotel="${hotel.id}">Pin op kaart</button>
@@ -608,7 +655,11 @@ function renderHotelList(hotels) {
         mapsLinkInitial: hotel.mapsLink || "",
         includeWebsite: true,
         websiteUrlInitial: hotel.websiteUrl || "",
-        websiteBeforeMaps: true
+        websiteBeforeMaps: true,
+        includePhoto: true,
+        photoInitial: hotel.photoUrl || "",
+        includePrice: true,
+        priceInitial: hotel.priceLabel || ""
       });
       if (!payload) return;
 
@@ -616,6 +667,8 @@ function renderHotelList(hotels) {
       hotel.address = payload.address;
       hotel.mapsLink = payload.mapsLink;
       hotel.websiteUrl = payload.websiteUrl ?? "";
+      hotel.photoUrl = payload.photoUrl || "";
+      hotel.priceLabel = payload.priceLabel || "";
 
       const status = await resolveItemLocation({
         item: hotel,
@@ -872,6 +925,19 @@ function renderMap() {
     })
       .addTo(map)
       .bindPopup(`<strong>Hotel</strong><br>${escapeHtml(hotel.name)}`);
+
+    const hotelPreview = buildHotelPreviewImage(hotel);
+    const priceTip = hotel.priceLabel ? escapeHtml(hotel.priceLabel) : "";
+    marker.bindTooltip(`
+      <div style="min-width:180px; max-width:220px;">
+        <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(hotel.name)}</div>
+        ${priceTip ? `<div style="font-size:12px; opacity:.9; margin-bottom:6px;">${priceTip}</div>` : ""}
+        ${hotelPreview ? `<img src="${escapeHtml(hotelPreview)}" alt="preview" style="width:100%; height:100px; object-fit:cover; border-radius:8px;" />` : `<div style="font-size:12px; opacity:.8;">Geen preview foto</div>`}
+      </div>
+    `, { direction: "top", opacity: 0.97, sticky: true });
+
+    marker.on("mouseover", () => marker.openTooltip());
+    marker.on("mouseout", () => marker.closeTooltip());
     marker.on("click", () => {
       if (hotel.websiteUrl && isSafeWebUrl(hotel.websiteUrl)) {
         window.open(hotel.websiteUrl.trim(), "_blank", "noopener,noreferrer");
@@ -1074,7 +1140,9 @@ async function promptEntityDetails(title, {
   photoInitial = "",
   includeWebsite = false,
   websiteUrlInitial = "",
-  websiteBeforeMaps = false
+  websiteBeforeMaps = false,
+  includePrice = false,
+  priceInitial = ""
 }) {
   const nameValue = window.prompt(`${title}\n${nameLabel}`, nameInitial || "");
   if (nameValue === null) return null;
@@ -1139,20 +1207,24 @@ async function promptEntityDetails(title, {
     }
   }
 
+  let priceLabel = "";
+  if (includePrice) {
+    const priceValue = window.prompt(
+      `${title}\nPrijs per nacht of totaal (optioneel, bv. €80)`,
+      priceInitial || ""
+    );
+    if (priceValue === null) return null;
+    priceLabel = priceValue.trim();
+  }
+
   return {
     name: trimmedName,
     address: addressValue.trim(),
     mapsLink: mapsLinkValue,
     websiteUrl,
-    photoUrl
+    photoUrl,
+    priceLabel
   };
-}
-
-function buildActivityPreviewImage(activity) {
-  if (activity.photoUrl && (/^https?:\/\//i.test(activity.photoUrl) || /^data:image\//i.test(activity.photoUrl))) {
-    return activity.photoUrl;
-  }
-  return "";
 }
 
 async function pickImageFromDevice() {
@@ -1489,6 +1561,8 @@ function normalizeData(parsed) {
     address: "",
     mapsLink: "",
     websiteUrl: "",
+    photoUrl: "",
+    priceLabel: "",
     latitude: null,
     longitude: null,
     ...hotel,
@@ -1496,6 +1570,8 @@ function normalizeData(parsed) {
     address: typeof hotel.address === "string" ? hotel.address : "",
     mapsLink: typeof hotel.mapsLink === "string" ? hotel.mapsLink : "",
     websiteUrl: typeof hotel.websiteUrl === "string" ? hotel.websiteUrl : "",
+    photoUrl: typeof hotel.photoUrl === "string" ? hotel.photoUrl : "",
+    priceLabel: typeof hotel.priceLabel === "string" ? hotel.priceLabel : "",
     latitude: typeof hotel.latitude === "number" ? hotel.latitude : null,
     longitude: typeof hotel.longitude === "number" ? hotel.longitude : null
   })) : [];
@@ -1598,7 +1674,8 @@ function seedData() {
     date: null,
     address: "Na Phra Lan Rd, Phra Nakhon, Bangkok 10200, Thailand",
     mapsLink: "",
-    photoUrl: "",
+    photoUrl:
+      "https://images.unsplash.com/photo-1528181304800-259b08848526?w=200&q=80",
     latitude: 13.7500,
     longitude: 100.4913,
     sortOrder: 0
@@ -1610,6 +1687,9 @@ function seedData() {
     address: "Riverside",
     mapsLink: "https://www.google.com/maps/search/?api=1&query=River%20View%20Hotel%20Bangkok",
     websiteUrl: "",
+    photoUrl:
+      "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=200&q=80",
+    priceLabel: "€80",
     latitude: null,
     longitude: null,
     sortOrder: 0

@@ -356,7 +356,7 @@ button:disabled {
 .list li {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   padding: 10px;
   border-top: 1px solid var(--border);
@@ -366,6 +366,74 @@ button:disabled {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.list-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.list-thumb-wrap {
+  flex-shrink: 0;
+}
+
+.list-thumb {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+  background: #131d36;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+}
+
+.list-thumb--placeholder {
+  background: linear-gradient(145deg, #1a2540, #0f1729);
+}
+
+.list-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-row-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.list-row-sub {
+  margin-top: 3px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.list-row-price {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 1px;
+  padding-left: 6px;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.list-row-price--muted {
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0.65;
+}
+
+.hotel-link-row--compact {
+  margin-top: 5px;
+  font-size: 0.74rem;
+  line-height: 1.35;
 }
 
 .place-row-left {
