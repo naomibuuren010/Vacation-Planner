@@ -1,6 +1,6 @@
 const STORAGE_KEY = "vacation_planner_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 33;
+const APP_VERSION = 34;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -660,8 +660,9 @@ function focusMapOnPlace(placeId) {
   const place = state.data.places.find((p) => p.id === placeId);
   if (!place) return;
   const pts = [];
-  if (hasCoordinates(place)) {
-    pts.push([place.latitude, place.longitude]);
+  const ownCoords = getPlaceCoordinatesForRoute(place);
+  if (ownCoords) {
+    pts.push(ownCoords);
   }
   state.data.activities
     .filter((a) => a.placeId === placeId && hasCoordinates(a))
@@ -736,9 +737,10 @@ function renderMap() {
   const routePlaces = state.data.places
     .filter((p) => p.countryId === state.selectedCountryId)
     .sort(bySortOrderThenName)
-    .filter(hasCoordinates);
+    .map((p) => ({ place: p, coords: getPlaceCoordinatesForRoute(p) }))
+    .filter((row) => Boolean(row.coords));
 
-  const routeLatLngs = routePlaces.map((p) => [p.latitude, p.longitude]);
+  const routeLatLngs = routePlaces.map((row) => row.coords);
 
   const selectedPlaceActivities = state.data.activities
     .filter((a) => a.placeId === state.selectedPlaceId)
@@ -783,7 +785,9 @@ function renderMap() {
     }).addTo(map);
   }
 
-  routePlaces.forEach((place, i) => {
+  routePlaces.forEach((row, i) => {
+    const place = row.place;
+    const markerCoords = row.coords;
     const n = i + 1;
     const isSel = place.id === state.selectedPlaceId;
     const icon = L.divIcon({
@@ -792,7 +796,7 @@ function renderMap() {
       iconSize: [28, 28],
       iconAnchor: [14, 14]
     });
-    const marker = L.marker([place.latitude, place.longitude], { icon, zIndexOffset: 200 + n })
+    const marker = L.marker(markerCoords, { icon, zIndexOffset: 200 + n })
       .addTo(map)
       .bindPopup(
         `<strong>${escapeHtml(place.name)}</strong><br>${place.type === "city" ? "Stad" : "Gebied"}<br><span style="font-size:12px;opacity:.88">Tik = activiteiten &amp; hotels voor deze stop</span>`
@@ -887,6 +891,19 @@ function renderMap() {
   }
 
   setTimeout(() => map.invalidateSize(), 0);
+}
+
+function getPlaceCoordinatesForRoute(place) {
+  if (!place) return null;
+  if (hasCoordinates(place)) return [place.latitude, place.longitude];
+
+  const fromActivity = state.data.activities.find((a) => a.placeId === place.id && hasCoordinates(a));
+  if (fromActivity) return [fromActivity.latitude, fromActivity.longitude];
+
+  const fromHotel = state.data.hotels.find((h) => h.placeId === place.id && hasCoordinates(h));
+  if (fromHotel) return [fromHotel.latitude, fromHotel.longitude];
+
+  return null;
 }
 
 function applyManualPin(lat, lng, target) {
