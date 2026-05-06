@@ -2,7 +2,7 @@ const STORAGE_KEY = "vacation_planner_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 42;
+const APP_VERSION = 43;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -50,6 +50,7 @@ const el = {
   activitiesCardHint: document.getElementById("activitiesCardHint"),
   hotelsCardHint: document.getElementById("hotelsCardHint"),
   addCountryBtn: document.getElementById("addCountryBtn"),
+  createSyncLinkBtn: document.getElementById("createSyncLinkBtn"),
   addCityBtn: document.getElementById("addCityBtn"),
   addAreaBtn: document.getElementById("addAreaBtn"),
   addActivityBtn: document.getElementById("addActivityBtn"),
@@ -69,6 +70,7 @@ const el = {
 boot();
 
 function boot() {
+  maybeImportDataFromSyncHash();
   if (isAppCompletelyEmpty(state.data)) {
     seedData();
   }
@@ -81,6 +83,28 @@ function boot() {
 }
 
 function wireEvents() {
+  if (el.createSyncLinkBtn) {
+    el.createSyncLinkBtn.addEventListener("click", async () => {
+      try {
+        const encoded = encodeDataForSyncLink(state.data);
+        const baseUrl = `${window.location.origin}${window.location.pathname}`;
+        const syncUrl = `${baseUrl}#sync=${encoded}`;
+        if (syncUrl.length > 180000) {
+          window.alert("Deze data is te groot voor een sync-link. Verwijder wat foto's of gebruik kortere data.");
+          return;
+        }
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(syncUrl);
+          window.alert("Sync-link gekopieerd. Open deze link op je iPhone om exact dezelfde data over te nemen.");
+          return;
+        }
+        window.prompt("Kopieer deze sync-link en open hem op je iPhone:", syncUrl);
+      } catch {
+        window.alert("Sync-link maken is mislukt.");
+      }
+    });
+  }
+
   if (el.heroEditTripBtn) {
     el.heroEditTripBtn.addEventListener("click", () => {
       document.getElementById("card-route")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1974,4 +1998,35 @@ function formatHotelMapsRow(mapsLink) {
   }
   return `<span class="meta">Google Maps: </span>${escapeHtml(truncateForDisplay(raw, 72))}`;
 }
+
+function encodeDataForSyncLink(data) {
+  const json = JSON.stringify(data);
+  return btoa(unescape(encodeURIComponent(json)));
+}
+
+function decodeDataFromSyncLink(encoded) {
+  const json = decodeURIComponent(escape(atob(encoded)));
+  return JSON.parse(json);
+}
+
+function maybeImportDataFromSyncHash() {
+  const rawHash = String(window.location.hash || "");
+  if (!rawHash.startsWith("#sync=")) return;
+  const encoded = rawHash.slice(6).trim();
+  if (!encoded) return;
+  try {
+    const parsed = decodeDataFromSyncLink(encoded);
+    const normalized = normalizeData(parsed);
+    state.data = normalized.data;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+    state.selectedCountryId = null;
+    state.selectedPlaceId = null;
+    state.locationStatusMessage = "Data gesynchroniseerd vanaf sync-link.";
+    history.replaceState(null, "", `${window.location.origin}${window.location.pathname}`);
+  } catch {
+    state.locationStatusMessage = "Sync-link kon niet worden ingelezen.";
+    history.replaceState(null, "", `${window.location.origin}${window.location.pathname}`);
+  }
+}
+
 
