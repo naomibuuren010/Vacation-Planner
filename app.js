@@ -2,7 +2,7 @@ const STORAGE_KEY = "vacation_planner_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 41;
+const APP_VERSION = 42;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -453,6 +453,14 @@ function isMobileTripLayout() {
   }
 }
 
+function isIPhoneDevice() {
+  try {
+    return /iPhone|iPod/i.test(String(navigator.userAgent || ""));
+  } catch {
+    return false;
+  }
+}
+
 function renderPlaces() {
   const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
   el.countryTitle.textContent = country ? `Route · ${country.name}` : "Route";
@@ -526,7 +534,8 @@ function renderItems() {
   const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
   const placesInCountry = placesForSelectedCountry();
   const placeIdSet = new Set(placesInCountry.map((p) => p.id));
-  const mobileAgg = isMobileTripLayout() && Boolean(state.selectedCountryId && placeIdSet.size);
+  // iPhone moet gelijk lopen met desktop: filter op geselecteerde plek i.p.v. land-aggregatie.
+  const mobileAgg = isMobileTripLayout() && !isIPhoneDevice() && Boolean(state.selectedCountryId && placeIdSet.size);
 
   const place = state.data.places.find((p) => p.id === state.selectedPlaceId);
   const placeName = place ? place.name : "—";
@@ -659,6 +668,7 @@ function renderHotelList(hotels) {
     return;
   }
 
+  const showPriceInlineForIPhone = isIPhoneDevice();
   hotels.forEach((hotel) => {
     const place = lookupPlace(hotel.placeId);
     const placeName = place?.name || "";
@@ -676,15 +686,18 @@ function renderHotelList(hotels) {
       : "";
 
     const li = document.createElement("li");
+    const titleHtml = showPriceInlineForIPhone && hotel.priceLabel
+      ? `${escapeHtml(hotel.name)} <span class="meta">(${escapeHtml(hotel.priceLabel)})</span>`
+      : escapeHtml(hotel.name);
     li.innerHTML = `
       <div class="list-row-main">
         <div class="list-thumb-wrap">${thumbHtml}</div>
         <div class="list-row-text">
-          <div class="list-row-title">${escapeHtml(hotel.name)}</div>
+          <div class="list-row-title">${titleHtml}</div>
           <div class="list-row-sub">${escapeHtml(subtitle || "—")}</div>
           ${websiteBlock}
         </div>
-        ${priceHtml}
+        ${showPriceInlineForIPhone ? "" : priceHtml}
       </div>
       <div class="row-actions">
         <button class="secondary" data-loc-hotel="${hotel.id}">Pin op kaart</button>
