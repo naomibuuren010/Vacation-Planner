@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 48;
+const APP_VERSION = 49;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -1751,21 +1751,45 @@ function isBigBenReference(text) {
 function backfillKnownLandmarkCoordinates(data) {
   let changed = false;
   const BIG_BEN = { latitude: 51.500729, longitude: -0.124625 };
+  const MAX_BIG_BEN_DISTANCE_KM = 3;
+  const shouldSnapToBigBen = (item) => {
+    if (!hasCoordinates(item)) return true;
+    const dist = distanceKm(item.latitude, item.longitude, BIG_BEN.latitude, BIG_BEN.longitude);
+    return !Number.isFinite(dist) || dist > MAX_BIG_BEN_DISTANCE_KM;
+  };
+  for (const place of data.places) {
+    const maybeBigBen = isBigBenReference(place.name);
+    if (!maybeBigBen || !shouldSnapToBigBen(place)) continue;
+    place.latitude = BIG_BEN.latitude;
+    place.longitude = BIG_BEN.longitude;
+    changed = true;
+  }
   for (const activity of data.activities) {
     const maybeBigBen = isBigBenReference(activity.title) || isBigBenReference(activity.address);
-    if (!maybeBigBen || hasCoordinates(activity)) continue;
+    if (!maybeBigBen || !shouldSnapToBigBen(activity)) continue;
     activity.latitude = BIG_BEN.latitude;
     activity.longitude = BIG_BEN.longitude;
     changed = true;
   }
   for (const hotel of data.hotels) {
     const maybeBigBen = isBigBenReference(hotel.name) || isBigBenReference(hotel.address);
-    if (!maybeBigBen || hasCoordinates(hotel)) continue;
+    if (!maybeBigBen || !shouldSnapToBigBen(hotel)) continue;
     hotel.latitude = BIG_BEN.latitude;
     hotel.longitude = BIG_BEN.longitude;
     changed = true;
   }
   return changed;
+}
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every((n) => typeof n === "number" && Number.isFinite(n))) return NaN;
+  const toRad = (deg) => deg * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return 6371 * c;
 }
 
 function backfillCoordinatesFromExistingMapsLinks(data) {
