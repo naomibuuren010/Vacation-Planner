@@ -1,82 +1,95 @@
 # Vacation Planner - Handover
 
 ## Doel
-Dit document beschrijft wat er gebouwd is, waar het draait, en hoe je verder werkt. Gebruik het in nieuwe chats om snel context te geven.
+Dit document beschrijft de actuele staat van de app zodat een nieuwe chat direct kan doorgaan zonder opnieuw uitzoekwerk.
 
 ## Huidige stack
-- Platform: PWA (Safari op iPhone → **Zet op beginscherm**)
+- Platform: PWA (iPhone via Safari -> **Zet op beginscherm**)
 - Tech: HTML, CSS, JavaScript (geen build tool)
-- **Hosting (primair):** [GitHub Pages](https://pages.github.com/) — repo [naomibuuren010/Vacation-Planner](https://github.com/naomibuuren010/Vacation-Planner), bron `main` + map `/`
-- **Oude hosting (optioneel):** Netlify Drop-URL kan verouderd zijn; nieuwe releases gaan via **git push**
-- Data: `localStorage` onder key `vacation_planner_v1` (per browser / per origin; **GitHub Pages-URL ≠ Netlify-URL** = aparte data)
-- Kaart: Leaflet; tegels **CARTO Positron** met **OSM-fallback** bij tile-fouten
-- Locatie: alleen **parsen van coördinaten uit Google Maps-links** (geen Geocoding API, geen billing)
+- Hosting: [GitHub Pages](https://pages.github.com/) via repo [naomibuuren010/Vacation-Planner](https://github.com/naomibuuren010/Vacation-Planner) (`main`, root)
+- Data-opslag: `localStorage` key `vacation_planner_v1` (per device + per origin)
+- Kaart: Leaflet + satellietlaag (`Esri World Imagery`) + labels overlay (`CARTO dark_only_labels`)
+- Locatie:
+  - coords uit Google Maps-links parsen
+  - fallback backfill uit bestaande items
+  - geocoding fallback via Nominatim voor plekken zonder coords
 
-## Live URL’s
-- **GitHub Pages:** https://naomibuuren010.github.io/Vacation-Planner/
-- **Netlify (legacy, indien nog gebruikt):** https://deft-duckanoo-568f9b.netlify.app/
+## Live URL
+- https://naomibuuren010.github.io/Vacation-Planner/
 
-## Huidige versie
-- UI-badge: **v21** (`online v21` / `offline v21`)
-- `index.html`: `app.js?v=21`
-- `sw.js`: cache `vacation-planner-v21`, `app.js?v=21` in `ASSETS`
-- Bij grotere wijzigingen: **versie in `app.js`, `index.html` en `sw.js` gelijk hogen** + gebruikers **harde refresh** / PWA opnieuw openen
+## Huidige versie (belangrijk)
+- **v41**
+- `app.js`: `APP_VERSION = 41`
+- `index.html`: `app.js?v=41`
+- `sw.js`: `CACHE_NAME = vacation-planner-v41`, `app.js?v=41` in `ASSETS`
 
-## Functionaliteit (kern)
-- **Landen:** toevoegen, bewerken, verwijderen
-- **Plaatsen (route):** één lijst met volgorde `sortOrder` (nieuw onderaan; niet A–Z). Types `city` | `area`. Optioneel **`stayDays`** (klein boven naam); bewerken via dialoog na naam
-- **Activiteiten** (per gekozen plek): titel, adres, **Google Maps-link** (pin + klik op marker opent link), optionele **foto** (URL of upload)
-- **Hotels:** adres, **Google Maps-link** (zoals activiteiten: meta `maps-link`, pin, marker → Maps), apart veld **`websiteUrl`** (klikbare site in de lijst)
-- **Layout:** verticale kolom + **trip-cards** (plaatsen / activiteiten / hotels); bij **meerdere landen** iets nadrukker styling (`multi-land`)
-- **Kaart:** pins plekken, activiteiten, hotels; handmatige pin na `Pin op kaart`
-- **iOS/PWA:** invoer veelal via native `prompt()` waar van toepassing (stabieler toetsenbord)
-- **Dataherstel bij laden:** ontbrekende `countryId`-landen worden aangevuld; wees-activiteiten/hotels worden waar mogelijk opnieuw gekoppeld (o.a. oude pleknamen uit JSON + adreshint). **Seed** alleen als **alles** leeg is (`countries`, `places`, `activities`, `hotels`), om dubbele Thailand-seed te voorkomen
+## Recente wijzigingen (v37 -> v41)
+- **v37**
+  - Thumbnails in activiteiten- en hotellijst
+  - Hotel `photoUrl` + `priceLabel` toegevoegd aan data + promptflow
+  - Hotelprijs zichtbaar in lijst
+- **v38**
+  - Mobiele/PWA layout verbeterd (safe-area, map hoogte met `dvh`, scrollbare chips/nav, betere touch targets)
+- **v39**
+  - IJsland toegevoegd aan seed
+  - Eenmalige merge voor bestaande installs zonder IJsland (`ICELAND_SAMPLE_LS_KEY`)
+- **v40**
+  - iPhone fix: landwissel laat `selectedPlaceId` niet onnodig leeglopen
+  - Mobiele lijst-CSS beperkt tot activiteiten/hotels (niet alle lijsten)
+- **v41**
+  - Robuuste sync: gekozen plek moet bij geselecteerd land horen (`syncSelectedPlaceWithCountry`)
+  - Mobiel (`<=960px`): activiteiten/hotels tonen alle items van geselecteerd land (niet alleen 1 stop)
+  - Resize listener (debounced) om mobiel/desktop render consistent te houden
 
-## Bekende beperkingen
-- Geen cloud-sync; data blijft lokaal per apparaat en per site-URL
-- Niet elke Maps-link bevat coördinaten → handmatige pin
-- Offline: UI werkt; kaarttegels afhankelijk van cache/netwerk
+## Kernfunctionaliteit
+- Landen beheren (add/edit/delete)
+- Route per land met steden/gebieden, `stayDays`, sortering op `sortOrder`
+- Kaart met route-lijn + genummerde markers
+- Activiteiten/hotels met:
+  - adres
+  - maps-link -> pin/kaart
+  - foto (URL of upload)
+  - hotels: website + prijsveld
+- Hero per land met eigen achtergrondfoto
+
+## Data model (actueel)
+- **Country:** `id`, `name`, `heroImageUrl`
+- **Place:** `id`, `countryId`, `type`, `name`, `latitude?`, `longitude?`, `stayDays?`, `sortOrder`
+- **Activity:** `id`, `placeId`, `title`, `address`, `mapsLink`, `photoUrl`, `latitude`, `longitude`, `sortOrder`, `notes`, `date`
+- **Hotel:** `id`, `placeId`, `name`, `address`, `mapsLink`, `websiteUrl`, `photoUrl`, `priceLabel`, `latitude`, `longitude`, `sortOrder`
+
+## Bekende aandachtspunten
+- Geen cloud-sync: data blijft lokaal per device/origin
+- Daardoor kan iPhone andere data tonen dan desktop (dit is verwacht gedrag)
+- PWA cache kan achterlopen: versie bump op alle 3 plekken blijft verplicht
+- Als gebruiker "alles kwijt" meldt op iPhone, eerst checken:
+  1) juiste land gekozen
+  2) in v41 toont mobiel land-breed, desktop stop-specifiek
+  3) PWA echt op nieuwste versie (badge + hard refresh / opnieuw openen)
 
 ## Belangrijke bestanden
-| Bestand | Rol |
-|--------|-----|
-| `index.html` | Layout, trip-stack, dialogs, script-`?v=` |
-| `styles.css` | Styling, trip-cards, lijst/layout |
-| `app.js` | Data, CRUD, kaart, normalisatie, herstel, seed |
-| `sw.js` | Cache-versie en asset-lijst |
-| `manifest.webmanifest` | PWA-manifest |
-| `icon.svg` | Icoon |
-| `GITHUB-SETUP.md` | Repo aanmaken, Pages (handmatig + script) |
-| `scripts/enable-github-pages.ps1` | Pages inschakelen via GitHub API (`$env:GITHUB_TOKEN`) |
+- `app.js`: state, rendering, data-normalisatie, seed, map, SW registratie
+- `styles.css`: dashboard + mobiel gedrag
+- `index.html`: layout + script versie
+- `sw.js`: cache policy/versioning
+- `manifest.webmanifest`, `icon.svg`: PWA assets
 
-Ook in de repo: **legacy Swift**-bestanden (niet nodig voor de live PWA).
-
-## Deploy (GitHub Pages)
-1. Wijzig code lokaal.
-2. Verhoog indien nodig **dezelfde** versie in `app.js` (badge + `registerServiceWorker`), `index.html` (`app.js?v=`), `sw.js` (`CACHE_NAME` + `app.js?v=` in `ASSETS`).
-3. In projectmap:
+## Deploy checklist
+1. Code aanpassen
+2. Indien nodig versie bump in:
+   - `app.js` -> `APP_VERSION`
+   - `index.html` -> `app.js?v=...`
+   - `sw.js` -> `CACHE_NAME` + `ASSETS app.js?v=...`
+3. Push:
 
 ```powershell
 cd "C:\Users\Eigenaar\Documents\Cursor\Apps\Vacation planner"
 git add -A
-git status
-git commit -m "Korte beschrijving"
+git commit -m "..."
 git push
 ```
 
-4. GitHub Pages ververst na push (meestal binnen ~1 minuut).
-5. Op iPhone: site in Safari openen, eventueel verversen; bij grote SW-wijzigingen PWA opnieuw “vastzetten” als nodig.
-
-## Data model (samenvatting)
-- **Country:** `id`, `name`
-- **Place:** `id`, `countryId`, `type`, `name`, `latitude?`, `longitude?`, `sortOrder`, `stayDays?` (1–366 of weggelaten)
-- **Activity:** `id`, `placeId`, `title`, `notes`, `date`, `address`, `mapsLink`, `photoUrl`, `latitude`, `longitude`, `sortOrder`
-- **Hotel:** `id`, `placeId`, `name`, `address`, `mapsLink`, `websiteUrl`, `latitude`, `longitude`, `sortOrder`
-
-## Testen (maps → pin)
-1. Activiteit met Maps-URL met coördinaten → pin zichtbaar; klik marker → link opent.
-2. Hotel:zelfde voor Maps-pin; **website** opent vanuit de lijstregel, niet vanuit de korte meta.
-3. Link zonder coördinaten → opslaan lukt; handmatige pin mogelijk.
+4. Op iPhone PWA heropenen / verversen om nieuwe SW over te nemen.
 
 ## Snelle context voor nieuwe chat (copy/paste)
-We werken aan de Vacation Planner PWA (HTML/CSS/JS), primair op **GitHub Pages**: https://naomibuuren010.github.io/Vacation-Planner/ — repo https://github.com/naomibuuren010/Vacation-Planner . Versie **v21** (`app.js` / `index.html` / `sw.js`). Structuur: landen → plaatsen (route + dagen + sortOrder) → activiteiten/hotels per plek. Hotels: `mapsLink` voor kaart/pin, `websiteUrl` voor site-link in UI. Data in `localStorage`. Deploy: `git push`. Zie `HANDOVER.md` voor details.
+We werken aan de Vacation Planner PWA (HTML/CSS/JS) op GitHub Pages: https://naomibuuren010.github.io/Vacation-Planner/ (repo: https://github.com/naomibuuren010/Vacation-Planner). Actuele versie is v41 (`app.js`, `index.html`, `sw.js` gesynchroniseerd). Kern: landen -> route-plekken -> activiteiten/hotels met map-pins, foto's en hotelprijzen. iPhone/PWA gebruikt eigen localStorage (geen cloud-sync), dus device-data kan verschillen. Zie `HANDOVER.md` voor laatste fixes (v37-v41) en deployregels.
