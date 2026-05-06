@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 47;
+const APP_VERSION = 48;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -1733,9 +1733,39 @@ function normalizeData(parsed) {
   if (recoverMissingCountries(base)) repaired = true;
   if (reattachOrphanItemsByOldPlaceNames(base, rawPlaces)) repaired = true;
   if (backfillCoordinatesFromExistingMapsLinks(base)) repaired = true;
+  if (backfillKnownLandmarkCoordinates(base)) repaired = true;
   if (backfillPlaceCoordinatesFromItems(base)) repaired = true;
   if (mergeSampleIcelandIfMissing(base)) repaired = true;
   return { data: base, repaired };
+}
+
+function normalizeLandmarkText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isBigBenReference(text) {
+  const t = normalizeLandmarkText(text);
+  return t.includes("big ben") || t.includes("big ban");
+}
+
+function backfillKnownLandmarkCoordinates(data) {
+  let changed = false;
+  const BIG_BEN = { latitude: 51.500729, longitude: -0.124625 };
+  for (const activity of data.activities) {
+    const maybeBigBen = isBigBenReference(activity.title) || isBigBenReference(activity.address);
+    if (!maybeBigBen || hasCoordinates(activity)) continue;
+    activity.latitude = BIG_BEN.latitude;
+    activity.longitude = BIG_BEN.longitude;
+    changed = true;
+  }
+  for (const hotel of data.hotels) {
+    const maybeBigBen = isBigBenReference(hotel.name) || isBigBenReference(hotel.address);
+    if (!maybeBigBen || hasCoordinates(hotel)) continue;
+    hotel.latitude = BIG_BEN.latitude;
+    hotel.longitude = BIG_BEN.longitude;
+    changed = true;
+  }
+  return changed;
 }
 
 function backfillCoordinatesFromExistingMapsLinks(data) {
