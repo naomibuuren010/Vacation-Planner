@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 45;
+const APP_VERSION = 46;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -96,32 +96,14 @@ function boot() {
 
 function wireEvents() {
   if (el.cloudSyncBtn) {
-    el.cloudSyncBtn.addEventListener("click", async () => {
-      const choice = window.prompt(
-        "Cloud sync\n1 = Nieuw sync-kanaal maken\n2 = Bestaand sync-kanaal koppelen\n3 = Nu ophalen\n4 = Ontkoppelen",
-        "1"
+    el.cloudSyncBtn.addEventListener("click", () => {
+      window.alert(
+        "Cloud sync is tijdelijk uitgeschakeld omdat de browser-opslagdienst write-calls vanaf iPhone blokkeert.\n\n"
+        + "Gebruik nu de stabiele route:\n"
+        + "1) Op pc: Export data\n"
+        + "2) Op iPhone: Import data\n\n"
+        + "Dit geeft direct exact dezelfde data op beide apparaten."
       );
-      if (!choice) return;
-      const c = choice.trim();
-      if (c === "1") {
-        await createCloudSyncChannel();
-        return;
-      }
-      if (c === "2") {
-        await connectToCloudSyncChannel();
-        return;
-      }
-      if (c === "3") {
-        await pullCloudSyncIfConnected(true);
-        return;
-      }
-      if (c === "4") {
-        if (!window.confirm("Cloud sync ontkoppelen op dit apparaat?")) return;
-        state.syncConfig = null;
-        saveSyncConfig(null);
-        state.locationStatusMessage = "Cloud sync ontkoppeld.";
-        renderMap();
-      }
     });
   }
 
