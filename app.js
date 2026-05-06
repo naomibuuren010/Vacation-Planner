@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 46;
+const APP_VERSION = 47;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -958,12 +958,12 @@ function renderMap() {
   const hasRoute = routeLatLngs.length > 0;
   const hasDetailPins = selectedPlaceActivities.length + selectedPlaceHotels.length > 0;
 
-  if (!hasRoute && !state.geocodeInFlight) {
-    const placesInCountry = state.data.places.filter((p) => p.countryId === state.selectedCountryId);
-    const missingPlaceCoords = placesInCountry.filter((p) => !getPlaceCoordinatesForRoute(p));
-    if (missingPlaceCoords.length > 0) {
-      void geocodeMissingPlaceCoordinates(state.selectedCountryId);
-    }
+  const placesInCountry = state.data.places.filter((p) => p.countryId === state.selectedCountryId);
+  const missingPlaceCoords = placesInCountry.filter((p) => !getPlaceCoordinatesForRoute(p));
+  // Ook als er al 1 routepunt zichtbaar is, ontbrekende stops blijven geocoden
+  // zodat alle routenummers (bijv. 1-2-3) terugkomen op de kaart.
+  if (!state.geocodeInFlight && missingPlaceCoords.length > 0) {
+    void geocodeMissingPlaceCoordinates(state.selectedCountryId);
   }
 
   if (!hasRoute && !hasDetailPins && !state.pendingPinTarget) {
@@ -981,7 +981,9 @@ function renderMap() {
     el.mapHint.textContent = `Pinmodus actief: tik op de kaart voor "${pendingLabel}".`;
     el.placeMap.style.cursor = "crosshair";
   } else {
-    const routeHint = hasRoute ? `${routePlaces.length} routestops` : "geen routepunten";
+    const routeHint = hasRoute
+      ? `${routePlaces.length}/${placesInCountry.length} routestops op kaart`
+      : "geen routepunten";
     const detailHint = hasDetailPins
       ? `${selectedPlaceActivities.length + selectedPlaceHotels.length} pins (huidige plek)`
       : "geen activiteit/hotel-pins voor deze plek";
