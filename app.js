@@ -2,7 +2,7 @@ const STORAGE_KEY = "vacation_planner_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 43;
+const APP_VERSION = 44;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -50,6 +50,8 @@ const el = {
   activitiesCardHint: document.getElementById("activitiesCardHint"),
   hotelsCardHint: document.getElementById("hotelsCardHint"),
   addCountryBtn: document.getElementById("addCountryBtn"),
+  exportDataBtn: document.getElementById("exportDataBtn"),
+  importDataBtn: document.getElementById("importDataBtn"),
   createSyncLinkBtn: document.getElementById("createSyncLinkBtn"),
   addCityBtn: document.getElementById("addCityBtn"),
   addAreaBtn: document.getElementById("addAreaBtn"),
@@ -62,6 +64,7 @@ const el = {
   fieldValue: document.getElementById("fieldValue"),
   cancelBtn: document.getElementById("cancelBtn"),
   photoPicker: document.getElementById("photoPicker"),
+  dataImportPicker: document.getElementById("dataImportPicker"),
   offlineBadge: document.getElementById("offlineBadge"),
   placeMap: document.getElementById("placeMap"),
   mapHint: document.getElementById("mapHint")
@@ -83,6 +86,50 @@ function boot() {
 }
 
 function wireEvents() {
+  if (el.exportDataBtn) {
+    el.exportDataBtn.addEventListener("click", () => {
+      try {
+        const payload = JSON.stringify(state.data, null, 2);
+        const blob = new Blob([payload], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `vacation-planner-backup-v${APP_VERSION}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch {
+        window.alert("Exporteren is mislukt.");
+      }
+    });
+  }
+
+  if (el.importDataBtn && el.dataImportPicker) {
+    el.importDataBtn.addEventListener("click", () => {
+      el.dataImportPicker.value = "";
+      el.dataImportPicker.click();
+    });
+    el.dataImportPicker.addEventListener("change", async () => {
+      const file = el.dataImportPicker.files && el.dataImportPicker.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const normalized = normalizeData(parsed);
+        state.data = normalized.data;
+        state.selectedCountryId = null;
+        state.selectedPlaceId = null;
+        state.pendingPinTarget = null;
+        state.locationStatusMessage = "Data geïmporteerd vanaf bestand.";
+        saveAndRender();
+        window.alert("Import gelukt. Je iPhone heeft nu dezelfde data als het bestand.");
+      } catch {
+        window.alert("Import mislukt. Kies een geldig vacation-planner JSON bestand.");
+      }
+    });
+  }
+
   if (el.createSyncLinkBtn) {
     el.createSyncLinkBtn.addEventListener("click", async () => {
       try {
