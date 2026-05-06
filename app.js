@@ -1,8 +1,10 @@
 const STORAGE_KEY = "vacation_planner_v1";
+const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 44;
+const APP_VERSION = 45;
+const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -16,7 +18,11 @@ const state = {
   locationStatusMessage: "",
   /** Na klik op routenummer: kaart inzoomen op gekozen plek + pins. */
   mapFocusAfterRender: null,
-  geocodeInFlight: false
+  geocodeInFlight: false,
+  syncConfig: loadSyncConfig(),
+  lastCloudSyncAt: 0,
+  syncInFlight: false,
+  syncPollTimer: null
 };
 if (__loaded.repaired) {
   try {
@@ -50,6 +56,7 @@ const el = {
   activitiesCardHint: document.getElementById("activitiesCardHint"),
   hotelsCardHint: document.getElementById("hotelsCardHint"),
   addCountryBtn: document.getElementById("addCountryBtn"),
+  cloudSyncBtn: document.getElementById("cloudSyncBtn"),
   exportDataBtn: document.getElementById("exportDataBtn"),
   importDataBtn: document.getElementById("importDataBtn"),
   createSyncLinkBtn: document.getElementById("createSyncLinkBtn"),
@@ -82,10 +89,42 @@ function boot() {
   }
   wireEvents();
   renderAll();
+  startCloudSyncPolling();
+  void pullCloudSyncIfConnected();
   registerServiceWorker();
 }
 
 function wireEvents() {
+  if (el.cloudSyncBtn) {
+    el.cloudSyncBtn.addEventListener("click", async () => {
+      const choice = window.prompt(
+        "Cloud sync\n1 = Nieuw sync-kanaal maken\n2 = Bestaand sync-kanaal koppelen\n3 = Nu ophalen\n4 = Ontkoppelen",
+        "1"
+      );
+      if (!choice) return;
+      const c = choice.trim();
+      if (c === "1") {
+        await createCloudSyncChannel();
+        return;
+      }
+      if (c === "2") {
+        await connectToCloudSyncChannel();
+        return;
+      }
+      if (c === "3") {
+        await pullCloudSyncIfConnected(true);
+        return;
+      }
+      if (c === "4") {
+        if (!window.confirm("Cloud sync ontkoppelen op dit apparaat?")) return;
+        state.syncConfig = null;
+        saveSyncConfig(null);
+        state.locationStatusMessage = "Cloud sync ontkoppeld.";
+        renderMap();
+      }
+    });
+  }
+
   if (el.exportDataBtn) {
     el.exportDataBtn.addEventListener("click", () => {
       try {
@@ -1861,6 +1900,217 @@ function mergeSampleIcelandIfMissing(data) {
 function saveAndRender() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
   renderAll();
+  void pushCloudSyncIfConnected();
+}
+
+function loadSyncConfig() {
+  try {
+    const raw = localStorage.getItem(SYNC_CONFIG_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed.blobId || !parsed.passphrase) return null;
+    return {
+      blobId: String(parsed.blobId),
+      passphrase: String(parsed.passphrase)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveSyncConfig(config) {
+  if (!config) {
+    localStorage.removeItem(SYNC_CONFIG_KEY);
+    return;
+  }
+  localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+}
+
+function startCloudSyncPolling() {
+  if (state.syncPollTimer) clearInterval(state.syncPollTimer);
+  state.syncPollTimer = setInterval(() => {
+    void pullCloudSyncIfConnected();
+  }, 30000);
+  window.addEventListener("online", () => {
+    void pullCloudSyncIfConnected();
+  });
+}
+
+async function createCloudSyncChannel() {
+  const passphrase = window.prompt("Kies een sync-wachtwoord (gebruik exact hetzelfde op iPhone):", "");
+  if (passphrase === null) return;
+  const clean = passphrase.trim();
+  if (!clean) {
+    window.alert("Sync-wachtwoord is verplicht.");
+    return;
+  }
+  try {
+    const packed = await packEncryptedCloudPayload(state.data, clean);
+    const response = await fetch(CLOUD_SYNC_BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(packed)
+    });
+    if (!response.ok) {
+      window.alert("Sync-kanaal maken mislukt.");
+      return;
+    }
+    const loc = response.headers.get("Location") || "";
+    const blobId = extractBlobId(loc);
+    if (!blobId) {
+      window.alert("Sync-kanaal gemaakt, maar code kon niet worden gelezen.");
+      return;
+    }
+    state.syncConfig = { blobId, passphrase: clean };
+    saveSyncConfig(state.syncConfig);
+    const shareText = `Sync code: ${blobId}\nWachtwoord: ${clean}`;
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(shareText);
+      window.alert("Cloud sync actief. Sync-code + wachtwoord zijn gekopieerd; vul die op je iPhone in bij Cloud sync > 2.");
+    } else {
+      window.prompt("Bewaar deze sync-code + wachtwoord en vul op iPhone in:", shareText);
+    }
+    state.locationStatusMessage = "Cloud sync kanaal actief.";
+    renderMap();
+  } catch {
+    window.alert("Cloud sync kanaal maken mislukt.");
+  }
+}
+
+async function connectToCloudSyncChannel() {
+  const blobId = window.prompt("Vul sync-code in:", "");
+  if (blobId === null) return;
+  const passphrase = window.prompt("Vul sync-wachtwoord in:", "");
+  if (passphrase === null) return;
+  const id = blobId.trim();
+  const pw = passphrase.trim();
+  if (!id || !pw) {
+    window.alert("Sync-code en wachtwoord zijn verplicht.");
+    return;
+  }
+  state.syncConfig = { blobId: id, passphrase: pw };
+  saveSyncConfig(state.syncConfig);
+  await pullCloudSyncIfConnected(true);
+}
+
+function extractBlobId(locationHeader) {
+  const t = String(locationHeader || "").trim();
+  if (!t) return "";
+  const parts = t.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "";
+}
+
+async function pushCloudSyncIfConnected() {
+  if (!state.syncConfig || state.syncInFlight) return;
+  const now = Date.now();
+  if (now - state.lastCloudSyncAt < 2000) return;
+  state.syncInFlight = true;
+  try {
+    const packed = await packEncryptedCloudPayload(state.data, state.syncConfig.passphrase);
+    const response = await fetch(`${CLOUD_SYNC_BASE_URL}/${encodeURIComponent(state.syncConfig.blobId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(packed)
+    });
+    if (response.ok) {
+      state.lastCloudSyncAt = Date.now();
+    }
+  } catch {
+    // Best effort sync; local app keeps working.
+  } finally {
+    state.syncInFlight = false;
+  }
+}
+
+async function pullCloudSyncIfConnected(showMessage = false) {
+  if (!state.syncConfig || state.syncInFlight) return;
+  state.syncInFlight = true;
+  try {
+    const response = await fetch(`${CLOUD_SYNC_BASE_URL}/${encodeURIComponent(state.syncConfig.blobId)}`, {
+      method: "GET",
+      headers: { Accept: "application/json" }
+    });
+    if (!response.ok) {
+      if (showMessage) window.alert("Cloud sync ophalen mislukt.");
+      return;
+    }
+    const packed = await response.json();
+    const remote = await unpackEncryptedCloudPayload(packed, state.syncConfig.passphrase);
+    if (!remote || typeof remote !== "object") {
+      if (showMessage) window.alert("Cloud data kon niet worden gelezen.");
+      return;
+    }
+    const normalized = normalizeData(remote);
+    state.data = normalized.data;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+    state.selectedCountryId = null;
+    state.selectedPlaceId = null;
+    state.locationStatusMessage = "Cloud sync bijgewerkt.";
+    renderAll();
+    state.lastCloudSyncAt = Date.now();
+    if (showMessage) window.alert("Cloud sync gelukt.");
+  } catch {
+    if (showMessage) window.alert("Cloud sync ophalen mislukt.");
+  } finally {
+    state.syncInFlight = false;
+  }
+}
+
+async function packEncryptedCloudPayload(data, passphrase) {
+  const plain = new TextEncoder().encode(JSON.stringify(data));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveSyncKey(passphrase, salt);
+  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain);
+  return {
+    v: 1,
+    updatedAt: Date.now(),
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    payload: bytesToBase64(new Uint8Array(cipher))
+  };
+}
+
+async function unpackEncryptedCloudPayload(packed, passphrase) {
+  if (!packed || packed.v !== 1 || !packed.salt || !packed.iv || !packed.payload) return null;
+  const salt = base64ToBytes(packed.salt);
+  const iv = base64ToBytes(packed.iv);
+  const cipher = base64ToBytes(packed.payload);
+  const key = await deriveSyncKey(passphrase, salt);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, cipher);
+  const text = new TextDecoder().decode(plain);
+  return JSON.parse(text);
+}
+
+async function deriveSyncKey(passphrase, salt) {
+  const material = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passphrase),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function bytesToBase64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 1) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+
+function base64ToBytes(base64) {
+  const bin = atob(String(base64 || ""));
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 function seedData() {
