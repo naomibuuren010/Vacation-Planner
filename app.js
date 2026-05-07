@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 49;
+const APP_VERSION = 50;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -74,7 +74,9 @@ const el = {
   dataImportPicker: document.getElementById("dataImportPicker"),
   offlineBadge: document.getElementById("offlineBadge"),
   placeMap: document.getElementById("placeMap"),
-  mapHint: document.getElementById("mapHint")
+  mapHint: document.getElementById("mapHint"),
+  mapRouteSummary: document.getElementById("mapRouteSummary"),
+  mapBudgetSummary: document.getElementById("mapBudgetSummary")
 };
 
 boot();
@@ -960,6 +962,11 @@ function renderMap() {
 
   const placesInCountry = state.data.places.filter((p) => p.countryId === state.selectedCountryId);
   const missingPlaceCoords = placesInCountry.filter((p) => !getPlaceCoordinatesForRoute(p));
+  renderMapInsights({
+    placesInCountry,
+    routePlaces,
+    routeLatLngs
+  });
   // Ook als er al 1 routepunt zichtbaar is, ontbrekende stops blijven geocoden
   // zodat alle routenummers (bijv. 1-2-3) terugkomen op de kaart.
   if (!state.geocodeInFlight && missingPlaceCoords.length > 0) {
@@ -1134,6 +1141,88 @@ function getPlaceCoordinatesForRoute(place) {
   if (fromHotel) return [fromHotel.latitude, fromHotel.longitude];
 
   return null;
+}
+
+function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
+  if (!el.mapRouteSummary || !el.mapBudgetSummary) return;
+  const placeIds = new Set(placesInCountry.map((p) => p.id));
+  const hotelsInCountry = state.data.hotels
+    .filter((h) => placeIds.has(h.placeId))
+    .sort(bySortOrderThenHotelName);
+  const activitiesInCountry = state.data.activities
+    .filter((a) => placeIds.has(a.placeId))
+    .sort(bySortOrderThenActivityTitle);
+
+  const totalRouteKm = sumRouteDistanceKm(routeLatLngs);
+  const routeRows = placesInCountry.slice(0, 6).map((place, index) => {
+    const hotel = hotelsInCountry.find((h) => h.placeId === place.id);
+    return `<li><span>${index + 1}. ${escapeHtml(place.name)}</span><span class="meta">${hotel ? `-> ${escapeHtml(hotel.name)}` : "-> geen hotel"}</span></li>`;
+  });
+  if (!routeRows.length) {
+    routeRows.push(`<li><span class="meta">Nog geen routepunten.</span></li>`);
+  }
+  el.mapRouteSummary.innerHTML = `
+    <div class="map-insight-title">Route</div>
+    <div class="map-insight-kpis">
+      <div><strong>${routePlaces.length}/${placesInCountry.length}</strong><span>op kaart</span></div>
+      <div><strong>${formatNumberNl(totalRouteKm, 1)} km</strong><span>totale route</span></div>
+    </div>
+    <ul class="map-insight-list">${routeRows.join("")}</ul>
+  `;
+
+  const hotelsBudget = hotelsInCountry.reduce((sum, hotel) => sum + parsePriceEuro(hotel.priceLabel), 0);
+  const activitiesBudget = activitiesInCountry.reduce((sum, activity) => sum + parsePriceEuro(activity.notes), 0);
+  const totalBudget = hotelsBudget + activitiesBudget;
+  const hotelsPct = totalBudget > 0 ? Math.round((hotelsBudget / totalBudget) * 100) : 0;
+  const activitiesPct = totalBudget > 0 ? Math.max(0, 100 - hotelsPct) : 0;
+  const donutStyle = totalBudget > 0
+    ? `style="background: conic-gradient(#3b82f6 0 ${hotelsPct}%, #fb923c ${hotelsPct}% 100%);"`
+    : `style="background: conic-gradient(#334155 0 100%);"`;
+  el.mapBudgetSummary.innerHTML = `
+    <div class="map-insight-title">Budget overzicht</div>
+    <div class="budget-overview-row">
+      <div class="budget-donut" ${donutStyle}>
+        <span>${formatEuro(totalBudget)}</span>
+      </div>
+      <div class="budget-lines">
+        <div><span class="dot dot-hotel"></span>Hotels <strong>${formatEuro(hotelsBudget)}</strong></div>
+        <div><span class="dot dot-activity"></span>Activiteiten <strong>${formatEuro(activitiesBudget)}</strong></div>
+        <div><span class="dot dot-other"></span>Overig <strong>${formatEuro(0)}</strong></div>
+      </div>
+    </div>
+  `;
+}
+
+function sumRouteDistanceKm(routeLatLngs) {
+  if (!Array.isArray(routeLatLngs) || routeLatLngs.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < routeLatLngs.length; i += 1) {
+    const prev = routeLatLngs[i - 1];
+    const cur = routeLatLngs[i];
+    total += distanceKm(prev[0], prev[1], cur[0], cur[1]);
+  }
+  return Number.isFinite(total) ? total : 0;
+}
+
+function parsePriceEuro(rawValue) {
+  const text = String(rawValue || "").replace(",", ".").replace(/\s+/g, " ");
+  const match = text.match(/(-?\d+(?:\.\d+)?)/);
+  if (!match) return 0;
+  const num = Number(match[1]);
+  return Number.isFinite(num) && num > 0 ? num : 0;
+}
+
+function formatEuro(value) {
+  const amount = Number.isFinite(value) ? value : 0;
+  return `€${Math.round(amount).toLocaleString("nl-NL")}`;
+}
+
+function formatNumberNl(value, digits = 0) {
+  const num = Number.isFinite(value) ? value : 0;
+  return num.toLocaleString("nl-NL", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
+  });
 }
 
 async function geocodeMissingPlaceCoordinates(countryId) {
