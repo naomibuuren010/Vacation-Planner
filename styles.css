@@ -236,7 +236,20 @@ body {
 
 .map-insight-title {
   font-weight: 700;
+}
+
+.map-insight-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 8px;
+  gap: 8px;
+}
+
+.budget-edit-btn {
+  padding: 6px 10px;
+  font-size: 0.74rem;
+  border-radius: 8px;
 }
 
 .map-insight-kpis {

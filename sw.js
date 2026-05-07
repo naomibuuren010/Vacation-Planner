@@ -1,7 +1,7 @@
-const CACHE_NAME = "vacation-planner-v50";
+const CACHE_NAME = "vacation-planner-v51";
 const ASSETS = [
   "./styles.css",
-  "./app.js?v=50",
+  "./app.js?v=51",
   "./manifest.webmanifest",
   "./icon.svg"
 ];
@@ -101,6 +101,7 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
 
 
 

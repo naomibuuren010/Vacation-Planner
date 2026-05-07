@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 50;
+const APP_VERSION = 51;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -226,7 +226,14 @@ function wireEvents() {
 
   el.addCountryBtn.addEventListener("click", () => {
     promptInput("Nieuw land", "Landnaam", (value) => {
-      state.data.countries.push({ id: uid(), name: value.trim(), heroImageUrl: "" });
+      state.data.countries.push({
+        id: uid(),
+        name: value.trim(),
+        heroImageUrl: "",
+        budgetHotels: 0,
+        budgetActivities: 0,
+        budgetOther: 0
+      });
       saveAndRender();
     });
   });
@@ -1145,6 +1152,7 @@ function getPlaceCoordinatesForRoute(place) {
 
 function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
   if (!el.mapRouteSummary || !el.mapBudgetSummary) return;
+  const country = state.data.countries.find((c) => c.id === state.selectedCountryId) || null;
   const placeIds = new Set(placesInCountry.map((p) => p.id));
   const hotelsInCountry = state.data.hotels
     .filter((h) => placeIds.has(h.placeId))
@@ -1170,16 +1178,21 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
     <ul class="map-insight-list">${routeRows.join("")}</ul>
   `;
 
-  const hotelsBudget = hotelsInCountry.reduce((sum, hotel) => sum + parsePriceEuro(hotel.priceLabel), 0);
-  const activitiesBudget = activitiesInCountry.reduce((sum, activity) => sum + parsePriceEuro(activity.notes), 0);
-  const totalBudget = hotelsBudget + activitiesBudget;
+  const hotelsBudget = country ? normalizeBudgetValue(country.budgetHotels) : 0;
+  const activitiesBudget = country ? normalizeBudgetValue(country.budgetActivities) : 0;
+  const otherBudget = country ? normalizeBudgetValue(country.budgetOther) : 0;
+  const totalBudget = hotelsBudget + activitiesBudget + otherBudget;
   const hotelsPct = totalBudget > 0 ? Math.round((hotelsBudget / totalBudget) * 100) : 0;
-  const activitiesPct = totalBudget > 0 ? Math.max(0, 100 - hotelsPct) : 0;
+  const activitiesPct = totalBudget > 0 ? Math.round((activitiesBudget / totalBudget) * 100) : 0;
+  const otherPct = totalBudget > 0 ? Math.max(0, 100 - hotelsPct - activitiesPct) : 0;
   const donutStyle = totalBudget > 0
-    ? `style="background: conic-gradient(#3b82f6 0 ${hotelsPct}%, #fb923c ${hotelsPct}% 100%);"`
+    ? `style="background: conic-gradient(#3b82f6 0 ${hotelsPct}%, #fb923c ${hotelsPct}% ${hotelsPct + activitiesPct}%, #64748b ${hotelsPct + activitiesPct}% 100%);"`
     : `style="background: conic-gradient(#334155 0 100%);"`;
   el.mapBudgetSummary.innerHTML = `
-    <div class="map-insight-title">Budget overzicht</div>
+    <div class="map-insight-head">
+      <div class="map-insight-title">Budget overzicht</div>
+      <button type="button" class="budget-edit-btn" data-edit-budget>Bewerken</button>
+    </div>
     <div class="budget-overview-row">
       <div class="budget-donut" ${donutStyle}>
         <span>${formatEuro(totalBudget)}</span>
@@ -1187,10 +1200,17 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
       <div class="budget-lines">
         <div><span class="dot dot-hotel"></span>Hotels <strong>${formatEuro(hotelsBudget)}</strong></div>
         <div><span class="dot dot-activity"></span>Activiteiten <strong>${formatEuro(activitiesBudget)}</strong></div>
-        <div><span class="dot dot-other"></span>Overig <strong>${formatEuro(0)}</strong></div>
+        <div><span class="dot dot-other"></span>Overig <strong>${formatEuro(otherBudget)}</strong></div>
       </div>
     </div>
   `;
+  const editBudgetBtn = el.mapBudgetSummary.querySelector("[data-edit-budget]");
+  if (editBudgetBtn) {
+    editBudgetBtn.addEventListener("click", () => {
+      if (!country) return;
+      promptEditCountryBudget(country);
+    });
+  }
 }
 
 function sumRouteDistanceKm(routeLatLngs) {
@@ -1223,6 +1243,57 @@ function formatNumberNl(value, digits = 0) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits
   });
+}
+
+function normalizeBudgetValue(value) {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string") {
+    const parsed = parseBudgetInput(value);
+    return parsed == null ? 0 : parsed;
+  }
+  return 0;
+}
+
+function parseBudgetInput(raw) {
+  const text = String(raw || "").replace(",", ".").trim();
+  if (!text) return 0;
+  const match = text.match(/^\d+(?:\.\d+)?$/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Math.round(num);
+}
+
+function promptBudgetValue(label, initialValue) {
+  while (true) {
+    const raw = window.prompt(`${label}\nVul bedrag in euro in (bijv. 300)`, String(initialValue));
+    if (raw === null) return null;
+    const parsed = parseBudgetInput(raw);
+    if (parsed == null) {
+      window.alert("Vul een geldig bedrag in (alleen cijfers, optioneel decimalen).");
+      continue;
+    }
+    return parsed;
+  }
+}
+
+function promptEditCountryBudget(country) {
+  const currentHotels = normalizeBudgetValue(country.budgetHotels);
+  const currentActivities = normalizeBudgetValue(country.budgetActivities);
+  const currentOther = normalizeBudgetValue(country.budgetOther);
+  const hotels = promptBudgetValue(`Budget hotels - ${country.name}`, currentHotels);
+  if (hotels === null) return;
+  const activities = promptBudgetValue(`Budget activiteiten - ${country.name}`, currentActivities);
+  if (activities === null) return;
+  const other = promptBudgetValue(`Budget overig - ${country.name}`, currentOther);
+  if (other === null) return;
+  country.budgetHotels = hotels;
+  country.budgetActivities = activities;
+  country.budgetOther = other;
+  state.locationStatusMessage = `Budget bijgewerkt voor ${country.name}.`;
+  saveAndRender();
 }
 
 async function geocodeMissingPlaceCoordinates(countryId) {
@@ -1773,7 +1844,10 @@ function normalizeData(parsed) {
     ? parsed.countries.map((c) => ({
       ...c,
       name: typeof c.name === "string" && c.name.trim() ? c.name.trim() : "Land",
-      heroImageUrl: typeof c.heroImageUrl === "string" ? c.heroImageUrl.trim() : ""
+      heroImageUrl: typeof c.heroImageUrl === "string" ? c.heroImageUrl.trim() : "",
+      budgetHotels: normalizeBudgetValue(c.budgetHotels),
+      budgetActivities: normalizeBudgetValue(c.budgetActivities),
+      budgetOther: normalizeBudgetValue(c.budgetOther)
     }))
     : [];
   base.places = Array.isArray(parsed.places) ? parsed.places.map((place) => ({
