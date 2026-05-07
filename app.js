@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 51;
+const APP_VERSION = 52;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -230,6 +230,7 @@ function wireEvents() {
         id: uid(),
         name: value.trim(),
         heroImageUrl: "",
+        routeKmManual: null,
         budgetHotels: 0,
         budgetActivities: 0,
         budgetOther: 0
@@ -1161,7 +1162,9 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
     .filter((a) => placeIds.has(a.placeId))
     .sort(bySortOrderThenActivityTitle);
 
-  const totalRouteKm = sumRouteDistanceKm(routeLatLngs);
+  const autoRouteKm = sumRouteDistanceKm(routeLatLngs);
+  const hasManualRouteKm = Boolean(country && typeof country.routeKmManual === "number" && Number.isFinite(country.routeKmManual));
+  const totalRouteKm = hasManualRouteKm ? country.routeKmManual : autoRouteKm;
   const routeRows = placesInCountry.slice(0, 6).map((place, index) => {
     const hotel = hotelsInCountry.find((h) => h.placeId === place.id);
     return `<li><span>${index + 1}. ${escapeHtml(place.name)}</span><span class="meta">${hotel ? `-> ${escapeHtml(hotel.name)}` : "-> geen hotel"}</span></li>`;
@@ -1170,13 +1173,23 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
     routeRows.push(`<li><span class="meta">Nog geen routepunten.</span></li>`);
   }
   el.mapRouteSummary.innerHTML = `
-    <div class="map-insight-title">Route</div>
+    <div class="map-insight-head">
+      <div class="map-insight-title">Route</div>
+      <button type="button" class="budget-edit-btn" data-edit-route-km>KM bewerken</button>
+    </div>
     <div class="map-insight-kpis">
       <div><strong>${routePlaces.length}/${placesInCountry.length}</strong><span>op kaart</span></div>
-      <div><strong>${formatNumberNl(totalRouteKm, 1)} km</strong><span>totale route</span></div>
+      <div><strong>${formatNumberNl(totalRouteKm, 1)} km</strong><span>${hasManualRouteKm ? "handmatig" : "automatisch"}</span></div>
     </div>
     <ul class="map-insight-list">${routeRows.join("")}</ul>
   `;
+  const editKmBtn = el.mapRouteSummary.querySelector("[data-edit-route-km]");
+  if (editKmBtn) {
+    editKmBtn.addEventListener("click", () => {
+      if (!country) return;
+      promptEditRouteKm(country, autoRouteKm);
+    });
+  }
 
   const hotelsBudget = country ? normalizeBudgetValue(country.budgetHotels) : 0;
   const activitiesBudget = country ? normalizeBudgetValue(country.budgetActivities) : 0;
@@ -1256,6 +1269,16 @@ function normalizeBudgetValue(value) {
   return 0;
 }
 
+function normalizeOptionalKmValue(value) {
+  if (value == null || value === "") return null;
+  const text = String(value).replace(",", ".").trim();
+  const match = text.match(/^\d+(?:\.\d+)?$/);
+  if (!match) return null;
+  const num = Number(match[0]);
+  if (!Number.isFinite(num) || num < 0) return null;
+  return Number(num.toFixed(1));
+}
+
 function parseBudgetInput(raw) {
   const text = String(raw || "").replace(",", ".").trim();
   if (!text) return 0;
@@ -1293,6 +1316,32 @@ function promptEditCountryBudget(country) {
   country.budgetActivities = activities;
   country.budgetOther = other;
   state.locationStatusMessage = `Budget bijgewerkt voor ${country.name}.`;
+  saveAndRender();
+}
+
+function promptEditRouteKm(country, autoKm) {
+  const current = typeof country.routeKmManual === "number" && Number.isFinite(country.routeKmManual)
+    ? String(country.routeKmManual)
+    : "";
+  const raw = window.prompt(
+    `Route afstand - ${country.name}\nVul km in (bijv. 12,4).\nLeeg laten = automatisch (${formatNumberNl(autoKm, 1)} km).`,
+    current
+  );
+  if (raw === null) return;
+  const t = String(raw).trim();
+  if (!t) {
+    country.routeKmManual = null;
+    state.locationStatusMessage = `Route-km terug op automatisch voor ${country.name}.`;
+    saveAndRender();
+    return;
+  }
+  const parsed = normalizeOptionalKmValue(t);
+  if (parsed == null) {
+    window.alert("Vul een geldig km-getal in (bijv. 12,4).");
+    return;
+  }
+  country.routeKmManual = parsed;
+  state.locationStatusMessage = `Route-km handmatig ingesteld voor ${country.name}.`;
   saveAndRender();
 }
 
@@ -1845,6 +1894,7 @@ function normalizeData(parsed) {
       ...c,
       name: typeof c.name === "string" && c.name.trim() ? c.name.trim() : "Land",
       heroImageUrl: typeof c.heroImageUrl === "string" ? c.heroImageUrl.trim() : "",
+      routeKmManual: normalizeOptionalKmValue(c.routeKmManual),
       budgetHotels: normalizeBudgetValue(c.budgetHotels),
       budgetActivities: normalizeBudgetValue(c.budgetActivities),
       budgetOther: normalizeBudgetValue(c.budgetOther)
