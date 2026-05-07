@@ -3,7 +3,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 52;
+const APP_VERSION = 53;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -19,6 +19,7 @@ const state = {
   /** Na klik op routenummer: kaart inzoomen op gekozen plek + pins. */
   mapFocusAfterRender: null,
   geocodeInFlight: false,
+  weatherRequestToken: 0,
   syncConfig: loadSyncConfig(),
   lastCloudSyncAt: 0,
   syncInFlight: false,
@@ -46,6 +47,7 @@ const el = {
   heroBgBtn: document.getElementById("heroBgBtn"),
   heroBg: document.getElementById("heroBg"),
   heroShareBtn: document.getElementById("heroShareBtn"),
+  heroWeather: document.getElementById("heroWeather"),
   countriesList: document.getElementById("countriesList"),
   placesList: document.getElementById("placesList"),
   activitiesList: document.getElementById("activitiesList"),
@@ -399,17 +401,88 @@ function renderHero() {
   const n = places.length;
   if (!country) {
     el.heroSubtitle.textContent = "Voeg een land toe om te beginnen.";
+    renderHeroWeather();
     applyHeroBackground(null);
     return;
   }
   if (!n) {
     el.heroSubtitle.textContent = "Nog geen bestemmingen — voeg steden of gebieden toe bij Route.";
+    renderHeroWeather();
     applyHeroBackground(country);
     return;
   }
   const daysPart = totalDays > 0 ? `${totalDays} dagen` : "dagen nog niet ingevuld";
   el.heroSubtitle.textContent = `${daysPart} · ${n} bestemming${n === 1 ? "" : "en"}`;
+  renderHeroWeather();
   applyHeroBackground(country);
+}
+
+function renderHeroWeather() {
+  if (!el.heroWeather) return;
+  const country = state.data.countries.find((c) => c.id === state.selectedCountryId);
+  if (!country) {
+    el.heroWeather.innerHTML = `<div class="hero-weather-temp">--</div><div class="hero-weather-desc">Geen land</div>`;
+    return;
+  }
+  const coords = pickWeatherCoordinatesForCountry(state.selectedCountryId);
+  if (!coords) {
+    el.heroWeather.innerHTML = `<div class="hero-weather-temp">--</div><div class="hero-weather-desc">Geen locatie</div>`;
+    return;
+  }
+  const requestToken = ++state.weatherRequestToken;
+  el.heroWeather.innerHTML = `<div class="hero-weather-temp">...</div><div class="hero-weather-desc">Weer laden</div>`;
+  void fetchCurrentWeather(coords.latitude, coords.longitude)
+    .then((weather) => {
+      if (requestToken !== state.weatherRequestToken) return;
+      if (!weather) {
+        el.heroWeather.innerHTML = `<div class="hero-weather-temp">--</div><div class="hero-weather-desc">Geen weerdata</div>`;
+        return;
+      }
+      el.heroWeather.innerHTML = `<div class="hero-weather-temp">${escapeHtml(weather.tempText)}</div><div class="hero-weather-desc">${escapeHtml(weather.desc)}</div>`;
+    })
+    .catch(() => {
+      if (requestToken !== state.weatherRequestToken) return;
+      el.heroWeather.innerHTML = `<div class="hero-weather-temp">--</div><div class="hero-weather-desc">Weer niet beschikbaar</div>`;
+    });
+}
+
+function pickWeatherCoordinatesForCountry(countryId) {
+  if (!countryId) return null;
+  const places = state.data.places
+    .filter((p) => p.countryId === countryId)
+    .sort(bySortOrderThenName);
+  const selected = places.find((p) => p.id === state.selectedPlaceId) || places[0] || null;
+  if (!selected) return null;
+  const coords = getPlaceCoordinatesForRoute(selected);
+  if (!coords) return null;
+  return { latitude: coords[0], longitude: coords[1] };
+}
+
+async function fetchCurrentWeather(latitude, longitude) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}&current=temperature_2m,weather_code&timezone=auto`;
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  const current = payload && payload.current ? payload.current : null;
+  if (!current || typeof current.temperature_2m !== "number") return null;
+  const weatherCode = typeof current.weather_code === "number" ? current.weather_code : -1;
+  return {
+    tempText: `${Math.round(current.temperature_2m)}°C`,
+    desc: weatherCodeToDutch(weatherCode)
+  };
+}
+
+function weatherCodeToDutch(code) {
+  if (code === 0) return "Helder";
+  if ([1, 2].includes(code)) return "Licht bewolkt";
+  if (code === 3) return "Bewolkt";
+  if ([45, 48].includes(code)) return "Mist";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Motregen";
+  if ([61, 63, 65, 66, 67].includes(code)) return "Regen";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Sneeuw";
+  if ([80, 81, 82].includes(code)) return "Buien";
+  if ([95, 96, 99].includes(code)) return "Onweer";
+  return "Onbekend";
 }
 
 function isSafeHeroImageUrl(url) {
