@@ -1,15 +1,39 @@
 const STORAGE_KEY = "vacation_planner_v1";
+const CHECKLIST_LS_KEY = "vacation_planner_checklist_v1";
 const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 53;
+const APP_VERSION = 54;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
 
 const __loaded = loadData();
+
+const CHECKLIST_ITEMS = [
+  { id: "passport", label: "Paspoort controleren" },
+  { id: "vaccines", label: "Vaccinaties controleren" },
+  { id: "insurance", label: "Reisverzekering afsluiten" },
+  { id: "hotel", label: "Hotel boeken" },
+  { id: "activities", label: "Activiteiten plannen" },
+  { id: "packing", label: "Inpaklijst maken" },
+  { id: "budget", label: "Budget controleren" },
+  { id: "sim", label: "Simkaart / eSIM regelen" }
+];
+
+function loadChecklistFromStorage() {
+  try {
+    const raw = localStorage.getItem(CHECKLIST_LS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 const state = {
   data: __loaded.data,
   selectedCountryId: null,
@@ -20,6 +44,7 @@ const state = {
   mapFocusAfterRender: null,
   geocodeInFlight: false,
   weatherRequestToken: 0,
+  checklist: loadChecklistFromStorage(),
   syncConfig: loadSyncConfig(),
   lastCloudSyncAt: 0,
   syncInFlight: false,
@@ -226,6 +251,23 @@ function wireEvents() {
     });
   });
 
+  const checklistPanel = document.getElementById("travelChecklistPanel");
+  if (checklistPanel) {
+    checklistPanel.addEventListener("change", (event) => {
+      const inp = event.target;
+      if (!(inp instanceof HTMLInputElement) || inp.type !== "checkbox") return;
+      const id = inp.getAttribute("data-checklist-id");
+      if (!id) return;
+      state.checklist[id] = inp.checked;
+      try {
+        localStorage.setItem(CHECKLIST_LS_KEY, JSON.stringify(state.checklist));
+      } catch {
+        /* ignore */
+      }
+      updateChecklistProgressUI();
+    });
+  }
+
   el.addCountryBtn.addEventListener("click", () => {
     promptInput("Nieuw land", "Landnaam", (value) => {
       state.data.countries.push({
@@ -381,6 +423,7 @@ function renderAll() {
   updateTripLayout();
   renderHero();
   renderCountries();
+  renderTravelChecklist();
   renderPlaces();
   renderItems();
   renderMap();
@@ -599,6 +642,36 @@ function renderCountries() {
 
     el.countriesList.appendChild(li);
   });
+}
+
+function updateChecklistProgressUI() {
+  const total = CHECKLIST_ITEMS.length;
+  let done = 0;
+  for (const item of CHECKLIST_ITEMS) {
+    if (state.checklist[item.id]) done += 1;
+  }
+  const label = document.getElementById("checklistCountLabel");
+  const fill = document.getElementById("checklistProgressFill");
+  if (label) label.textContent = `${done}/${total} voltooid`;
+  if (fill) fill.style.width = total ? `${(done / total) * 100}%` : "0%";
+}
+
+function renderTravelChecklist() {
+  const listEl = document.getElementById("checklistList");
+  if (!listEl) return;
+  listEl.innerHTML = "";
+  for (const item of CHECKLIST_ITEMS) {
+    const checked = Boolean(state.checklist[item.id]);
+    const li = document.createElement("li");
+    li.className = "checklist-row";
+    const inputId = `checklist-${item.id}`;
+    li.innerHTML = `
+      <input type="checkbox" id="${escapeAttr(inputId)}" data-checklist-id="${escapeAttr(item.id)}" ${checked ? "checked" : ""} />
+      <label for="${escapeAttr(inputId)}">${escapeHtml(item.label)}</label>
+    `;
+    listEl.appendChild(li);
+  }
+  updateChecklistProgressUI();
 }
 
 function placesForSelectedCountry() {

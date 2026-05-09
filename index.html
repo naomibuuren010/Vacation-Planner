@@ -34,6 +34,7 @@
         <a class="sidebar-link" href="#card-hotels">Hotels</a>
         <a class="sidebar-link" href="#card-map">Kaart</a>
         <a class="sidebar-link" href="#mapBudgetSummary">Budget</a>
+        <a class="sidebar-link" href="#travelChecklistPanel">Checklist</a>
         <a class="sidebar-link" href="#section-settings">Instellingen</a>
       </nav>
     </aside>
@@ -105,18 +106,34 @@
         </div>
 
         <section class="panel panel-settings" id="section-settings">
-          <div class="panel-header">
-            <h2>Landen beheren</h2>
-            <div class="actions">
-              <button id="cloudSyncBtn" type="button">Cloud sync</button>
-              <button id="exportDataBtn" type="button">Export data</button>
-              <button id="importDataBtn" type="button">Import data</button>
-              <button id="createSyncLinkBtn" type="button">Sync naar iPhone</button>
-              <button id="addCountryBtn">+ Land</button>
+          <div class="settings-split">
+            <aside class="settings-checklist-wrap" id="travelChecklistPanel">
+              <div class="settings-checklist-card">
+                <div class="checklist-head">
+                  <h2 class="checklist-title">Reis checklist</h2>
+                  <span class="checklist-count" id="checklistCountLabel"></span>
+                </div>
+                <div class="checklist-progress" aria-hidden="true">
+                  <div class="checklist-progress-fill" id="checklistProgressFill"></div>
+                </div>
+                <ul class="checklist-list" id="checklistList"></ul>
+              </div>
+            </aside>
+            <div class="settings-countries-panel">
+              <div class="panel-header">
+                <h2>Landen beheren</h2>
+                <div class="actions">
+                  <button id="cloudSyncBtn" type="button">Cloud sync</button>
+                  <button id="exportDataBtn" type="button">Export data</button>
+                  <button id="importDataBtn" type="button">Import data</button>
+                  <button id="createSyncLinkBtn" type="button">Sync naar iPhone</button>
+                  <button id="addCountryBtn">+ Land</button>
+                </div>
+              </div>
+              <p class="panel-hint meta">Voeg landen toe, bewerk of verwijder. Tik op een land in de balk hierboven om snel te wisselen.</p>
+              <ul id="countriesList" class="list countries-list"></ul>
             </div>
           </div>
-          <p class="panel-hint meta">Voeg landen toe, bewerk of verwijder. Tik op een land in de balk hierboven om snel te wisselen.</p>
-          <ul id="countriesList" class="list"></ul>
         </section>
       </div>
     </div>
@@ -143,7 +160,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="app.js?v=53"></script>
+  <script src="app.js?v=54"></script>
 </body>
 </html>
 
