@@ -4,7 +4,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 55;
+const APP_VERSION = 56;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -278,6 +278,8 @@ function wireEvents() {
         routeKmManual: null,
         budgetHotels: 0,
         budgetActivities: 0,
+        budgetTransport: 0,
+        budgetFoodDrink: 0,
         budgetOther: 0
       });
       saveAndRender();
@@ -1340,14 +1342,17 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
 
   const hotelsBudget = country ? normalizeBudgetValue(country.budgetHotels) : 0;
   const activitiesBudget = country ? normalizeBudgetValue(country.budgetActivities) : 0;
+  const transportBudget = country ? normalizeBudgetValue(country.budgetTransport) : 0;
+  const foodBudget = country ? normalizeBudgetValue(country.budgetFoodDrink) : 0;
   const otherBudget = country ? normalizeBudgetValue(country.budgetOther) : 0;
-  const totalBudget = hotelsBudget + activitiesBudget + otherBudget;
-  const hotelsPct = totalBudget > 0 ? Math.round((hotelsBudget / totalBudget) * 100) : 0;
-  const activitiesPct = totalBudget > 0 ? Math.round((activitiesBudget / totalBudget) * 100) : 0;
-  const otherPct = totalBudget > 0 ? Math.max(0, 100 - hotelsPct - activitiesPct) : 0;
-  const donutStyle = totalBudget > 0
-    ? `style="background: conic-gradient(#3b82f6 0 ${hotelsPct}%, #fb923c ${hotelsPct}% ${hotelsPct + activitiesPct}%, #64748b ${hotelsPct + activitiesPct}% 100%);"`
-    : `style="background: conic-gradient(#334155 0 100%);"`;
+  const totalBudget = hotelsBudget + activitiesBudget + transportBudget + foodBudget + otherBudget;
+  const donutStyle = buildBudgetDonutStyle(totalBudget, [
+    { value: hotelsBudget, color: "#3b82f6" },
+    { value: activitiesBudget, color: "#fb923c" },
+    { value: transportBudget, color: "#a78bfa" },
+    { value: foodBudget, color: "#fbbf24" },
+    { value: otherBudget, color: "#64748b" }
+  ]);
   el.mapBudgetSummary.innerHTML = `
     <div class="map-insight-head">
       <div class="map-insight-title">Budget overzicht</div>
@@ -1360,6 +1365,8 @@ function renderMapInsights({ placesInCountry, routePlaces, routeLatLngs }) {
       <div class="budget-lines">
         <div><span class="dot dot-hotel"></span>Hotels <strong>${formatEuro(hotelsBudget)}</strong></div>
         <div><span class="dot dot-activity"></span>Activiteiten <strong>${formatEuro(activitiesBudget)}</strong></div>
+        <div><span class="dot dot-transport"></span>Transport <strong>${formatEuro(transportBudget)}</strong></div>
+        <div><span class="dot dot-food"></span>Eten/drinken <strong>${formatEuro(foodBudget)}</strong></div>
         <div><span class="dot dot-other"></span>Overig <strong>${formatEuro(otherBudget)}</strong></div>
       </div>
     </div>
@@ -1449,18 +1456,47 @@ function promptBudgetValue(label, initialValue) {
   }
 }
 
+function buildBudgetDonutStyle(total, segments) {
+  if (!total || total <= 0) {
+    return `style="background: conic-gradient(#334155 0 100%);"`;
+  }
+  const positive = segments.filter((s) => s.value > 0);
+  if (!positive.length) {
+    return `style="background: conic-gradient(#334155 0 100%);"`;
+  }
+  let acc = 0;
+  const stops = [];
+  for (let i = 0; i < positive.length; i += 1) {
+    const s = positive[i];
+    const start = acc;
+    let end = acc + (s.value / total) * 100;
+    if (i === positive.length - 1) end = 100;
+    stops.push(`${s.color} ${start}% ${end}%`);
+    acc = end;
+  }
+  return `style="background: conic-gradient(${stops.join(", ")});"`;
+}
+
 function promptEditCountryBudget(country) {
   const currentHotels = normalizeBudgetValue(country.budgetHotels);
   const currentActivities = normalizeBudgetValue(country.budgetActivities);
+  const currentTransport = normalizeBudgetValue(country.budgetTransport);
+  const currentFood = normalizeBudgetValue(country.budgetFoodDrink);
   const currentOther = normalizeBudgetValue(country.budgetOther);
   const hotels = promptBudgetValue(`Budget hotels - ${country.name}`, currentHotels);
   if (hotels === null) return;
   const activities = promptBudgetValue(`Budget activiteiten - ${country.name}`, currentActivities);
   if (activities === null) return;
+  const transport = promptBudgetValue(`Budget transport - ${country.name}`, currentTransport);
+  if (transport === null) return;
+  const food = promptBudgetValue(`Budget eten/drinken - ${country.name}`, currentFood);
+  if (food === null) return;
   const other = promptBudgetValue(`Budget overig - ${country.name}`, currentOther);
   if (other === null) return;
   country.budgetHotels = hotels;
   country.budgetActivities = activities;
+  country.budgetTransport = transport;
+  country.budgetFoodDrink = food;
   country.budgetOther = other;
   state.locationStatusMessage = `Budget bijgewerkt voor ${country.name}.`;
   saveAndRender();
@@ -2044,6 +2080,8 @@ function normalizeData(parsed) {
       routeKmManual: normalizeOptionalKmValue(c.routeKmManual),
       budgetHotels: normalizeBudgetValue(c.budgetHotels),
       budgetActivities: normalizeBudgetValue(c.budgetActivities),
+      budgetTransport: normalizeBudgetValue(c.budgetTransport),
+      budgetFoodDrink: normalizeBudgetValue(c.budgetFoodDrink),
       budgetOther: normalizeBudgetValue(c.budgetOther)
     }))
     : [];

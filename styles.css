@@ -376,6 +376,14 @@ body {
   background: #fb923c;
 }
 
+.dot-transport {
+  background: #a78bfa;
+}
+
+.dot-food {
+  background: #fbbf24;
+}
+
 .dot-other {
   background: #64748b;
 }
