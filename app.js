@@ -4,7 +4,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 56;
+const APP_VERSION = 57;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -21,6 +21,7 @@ const CHECKLIST_ITEMS = [
   { id: "activities", label: "Activiteiten plannen" },
   { id: "packing", label: "Inpaklijst maken" },
   { id: "budget", label: "Budget controleren" },
+  { id: "cash", label: "Contant geld" },
   { id: "sim", label: "Simkaart / eSIM regelen" }
 ];
 
