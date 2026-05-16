@@ -21,10 +21,7 @@
 <body>
   <header class="topbar">
     <h1>Vacation Planner</h1>
-    <div class="topbar-badges">
-      <span id="syncStatusBadge" class="badge sync-badge sync-off" title="Cloud sync status">sync uit</span>
-      <span id="offlineBadge" class="badge">offline klaar</span>
-    </div>
+    <span id="offlineBadge" class="badge">offline klaar</span>
   </header>
 
   <div class="app-layout">
@@ -126,15 +123,13 @@
               <div class="panel-header">
                 <h2>Landen beheren</h2>
                 <div class="actions">
-                  <button id="cloudSyncBtn" type="button">Cloud sync</button>
                   <button id="exportDataBtn" type="button">Export data</button>
                   <button id="importDataBtn" type="button">Import data</button>
-                  <button id="createSyncLinkBtn" type="button">Sync naar iPhone</button>
                   <button id="addCountryBtn">+ Land</button>
                 </div>
               </div>
-              <p id="syncSetupBanner" class="sync-setup-banner meta" hidden>
-                Koppel <strong>Cloud sync</strong> één keer (pc: optie 1, iPhone: optie 2) — daarna verschijnen wijzigingen automatisch op beide apparaten (badge: <em>sync live</em>).
+              <p class="data-transfer-hint meta">
+                <strong>Data pc ↔ iPhone:</strong> op de pc <em>Export data</em>, op de iPhone hetzelfde bestand via <em>Import data</em> (AirDrop, Mail of Bestanden).
               </p>
               <p class="panel-hint meta">Voeg landen toe, bewerk of verwijder. Tik op een land in de balk hierboven om snel te wisselen.</p>
               <ul id="countriesList" class="list countries-list"></ul>
@@ -166,7 +161,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="app.js?v=59"></script>
+  <script src="app.js?v=60"></script>
 </body>
 </html>
 
