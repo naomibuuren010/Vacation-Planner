@@ -4,7 +4,7 @@ const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 57;
+const APP_VERSION = 58;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
 
 const DEFAULT_HERO_IMAGE =
@@ -341,6 +341,8 @@ function wireEvents() {
       nameInitial: "",
       addressInitial: "",
       mapsLinkInitial: "",
+      includeBookingLink: true,
+      bookingLinkInitial: "",
       includePhoto: true,
       photoInitial: ""
     });
@@ -354,6 +356,7 @@ function wireEvents() {
       date: null,
       address: payload.address,
       mapsLink: payload.mapsLink,
+      bookingLink: payload.bookingLink ?? "",
       photoUrl: payload.photoUrl,
       latitude: null,
       longitude: null,
@@ -848,6 +851,9 @@ function renderActivityList(activities) {
   activities.forEach((activity) => {
     const place = lookupPlace(activity.placeId);
     const subtitle = place?.name || activity.address || "";
+    const bookingBlock = activity.bookingLink && String(activity.bookingLink).trim()
+      ? `<div class="meta hotel-link-row hotel-link-row--compact">${formatActivityBookingRow(activity.bookingLink)}</div>`
+      : "";
     const previewSrc = buildActivityPreviewImage(activity);
     const thumbHtml = previewSrc
       ? `<img class="list-thumb" src="${escapeHtml(previewSrc)}" width="52" height="52" loading="lazy" decoding="async" alt="">`
@@ -860,14 +866,26 @@ function renderActivityList(activities) {
         <div class="list-row-text">
           <div class="list-row-title">${escapeHtml(activity.title)}</div>
           <div class="list-row-sub">${escapeHtml(subtitle)}</div>
+          ${bookingBlock}
         </div>
       </div>
       <div class="row-actions">
+        <button class="secondary" data-open-booking="${activity.id}" ${activity.bookingLink && isSafeWebUrl(activity.bookingLink) ? "" : "hidden"}>Boeking</button>
         <button class="secondary" data-loc-activity="${activity.id}">Pin op kaart</button>
         <button data-edit-activity="${activity.id}">Bewerk</button>
         <button class="danger" data-delete-activity="${activity.id}">Verwijder</button>
       </div>
     `;
+
+    const openBookingBtn = li.querySelector(`[data-open-booking="${activity.id}"]`);
+    if (openBookingBtn) {
+      openBookingBtn.addEventListener("click", () => {
+        const url = activity.bookingLink && String(activity.bookingLink).trim();
+        if (isSafeWebUrl(url)) {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      });
+    }
 
     li.querySelector(`[data-loc-activity="${activity.id}"]`).addEventListener("click", () => {
       state.pendingPinTarget = { kind: "activity", id: activity.id };
@@ -882,6 +900,8 @@ function renderActivityList(activities) {
         nameInitial: activity.title,
         addressInitial: activity.address || "",
         mapsLinkInitial: activity.mapsLink || "",
+        includeBookingLink: true,
+        bookingLinkInitial: activity.bookingLink || "",
         includePhoto: true,
         photoInitial: activity.photoUrl || ""
       });
@@ -890,6 +910,7 @@ function renderActivityList(activities) {
       activity.title = payload.name;
       activity.address = payload.address;
       activity.mapsLink = payload.mapsLink;
+      activity.bookingLink = payload.bookingLink ?? "";
       activity.photoUrl = payload.photoUrl || "";
 
       const status = await resolveItemLocation({
@@ -1222,7 +1243,9 @@ function renderMap() {
     marker.on("mouseover", () => marker.openTooltip());
     marker.on("mouseout", () => marker.closeTooltip());
     marker.on("click", () => {
-      if (activity.mapsLink && /^https?:\/\//i.test(activity.mapsLink)) {
+      if (activity.bookingLink && isSafeWebUrl(activity.bookingLink)) {
+        window.open(activity.bookingLink.trim(), "_blank", "noopener,noreferrer");
+      } else if (activity.mapsLink && /^https?:\/\//i.test(activity.mapsLink)) {
         window.open(activity.mapsLink, "_blank", "noopener,noreferrer");
       } else {
         marker.openPopup();
@@ -1682,6 +1705,8 @@ async function promptEntityDetails(title, {
   nameInitial,
   addressInitial,
   mapsLinkInitial,
+  includeBookingLink = false,
+  bookingLinkInitial = "",
   includePhoto = false,
   photoInitial = "",
   includeWebsite = false,
@@ -1733,6 +1758,16 @@ async function promptEntityDetails(title, {
     }
   }
 
+  let bookingLink = "";
+  if (includeBookingLink) {
+    const bookingPrompt = window.prompt(
+      `${title}\nGetYourGuide of andere boekingslink (optioneel, opent vanuit de lijst)`,
+      bookingLinkInitial || ""
+    );
+    if (bookingPrompt === null) return null;
+    bookingLink = bookingPrompt.trim();
+  }
+
   let photoUrl = "";
   if (includePhoto) {
     const photoValue = window.prompt(
@@ -1767,6 +1802,7 @@ async function promptEntityDetails(title, {
     name: trimmedName,
     address: addressValue.trim(),
     mapsLink: mapsLinkValue,
+    bookingLink,
     websiteUrl,
     photoUrl,
     priceLabel
@@ -2098,6 +2134,7 @@ function normalizeData(parsed) {
     date: null,
     address: "",
     mapsLink: "",
+    bookingLink: "",
     photoUrl: "",
     latitude: null,
     longitude: null,
@@ -2105,6 +2142,7 @@ function normalizeData(parsed) {
     sortOrder: typeof activity.sortOrder === "number" && Number.isFinite(activity.sortOrder) ? activity.sortOrder : undefined,
     address: typeof activity.address === "string" ? activity.address : "",
     mapsLink: typeof activity.mapsLink === "string" ? activity.mapsLink : "",
+    bookingLink: typeof activity.bookingLink === "string" ? activity.bookingLink : "",
     photoUrl: typeof activity.photoUrl === "string" ? activity.photoUrl : "",
     latitude: typeof activity.latitude === "number" ? activity.latitude : null,
     longitude: typeof activity.longitude === "number" ? activity.longitude : null
@@ -2709,6 +2747,19 @@ function truncateForDisplay(str, max) {
 
 function isSafeWebUrl(url) {
   return /^https?:\/\//i.test(String(url || "").trim());
+}
+
+function formatActivityBookingRow(bookingLink) {
+  const raw = bookingLink && String(bookingLink).trim();
+  if (!raw) {
+    return "Geen boekingslink — voeg bij Bewerk een GetYourGuide- of andere link toe.";
+  }
+  if (isSafeWebUrl(raw)) {
+    const display = truncateForDisplay(raw, 72);
+    const label = /getyourguide/i.test(raw) ? "GetYourGuide" : "Boeking";
+    return `<span class="meta">${label}: </span><a class="inline-link" href="${escapeAttr(raw)}" target="_blank" rel="noopener noreferrer">${escapeHtml(display)}</a>`;
+  }
+  return escapeHtml(raw);
 }
 
 function formatHotelWebsiteRow(websiteUrl) {
