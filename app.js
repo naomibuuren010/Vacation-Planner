@@ -1,16 +1,20 @@
 const STORAGE_KEY = "vacation_planner_v1";
 const CHECKLIST_LS_KEY = "vacation_planner_checklist_v1";
 const SYNC_CONFIG_KEY = "vacation_planner_sync_config_v1";
+const DATA_META_KEY = "vacation_planner_data_meta_v1";
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 58;
+const APP_VERSION = 59;
 const CLOUD_SYNC_BASE_URL = "https://jsonblob.com/api/jsonBlob";
+const SYNC_POLL_VISIBLE_MS = 6000;
+const SYNC_POLL_HIDDEN_MS = 25000;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
 
 const __loaded = loadData();
+const __initialSyncConfig = loadSyncConfig();
 
 const CHECKLIST_ITEMS = [
   { id: "passport", label: "Paspoort controleren" },
@@ -47,7 +51,8 @@ const state = {
   geocodeInFlight: false,
   weatherRequestToken: 0,
   checklist: loadChecklistFromStorage(),
-  syncConfig: loadSyncConfig(),
+  syncConfig: __initialSyncConfig,
+  syncStatus: __initialSyncConfig ? "ok" : "off",
   lastCloudSyncAt: 0,
   syncInFlight: false,
   syncPollTimer: null
@@ -102,39 +107,40 @@ const el = {
   photoPicker: document.getElementById("photoPicker"),
   dataImportPicker: document.getElementById("dataImportPicker"),
   offlineBadge: document.getElementById("offlineBadge"),
+  syncStatusBadge: document.getElementById("syncStatusBadge"),
+  syncSetupBanner: document.getElementById("syncSetupBanner"),
   placeMap: document.getElementById("placeMap"),
   mapHint: document.getElementById("mapHint"),
   mapRouteSummary: document.getElementById("mapRouteSummary"),
   mapBudgetSummary: document.getElementById("mapBudgetSummary")
 };
 
-boot();
+void boot();
 
-function boot() {
+async function boot() {
   maybeImportDataFromSyncHash();
+  if (!state.selectedCountryId && state.data.countries.length) {
+    state.selectedCountryId = [...state.data.countries].sort(byName("name"))[0].id;
+  }
+  wireEvents();
+  if (state.syncConfig && navigator.onLine) {
+    await pullCloudSyncIfConnected();
+  }
   if (isAppCompletelyEmpty(state.data)) {
     seedData();
   }
   if (!state.selectedCountryId && state.data.countries.length) {
     state.selectedCountryId = [...state.data.countries].sort(byName("name"))[0].id;
   }
-  wireEvents();
   renderAll();
   startCloudSyncPolling();
-  void pullCloudSyncIfConnected();
   registerServiceWorker();
 }
 
 function wireEvents() {
   if (el.cloudSyncBtn) {
     el.cloudSyncBtn.addEventListener("click", () => {
-      window.alert(
-        "Cloud sync is tijdelijk uitgeschakeld omdat de browser-opslagdienst write-calls vanaf iPhone blokkeert.\n\n"
-        + "Gebruik nu de stabiele route:\n"
-        + "1) Op pc: Export data\n"
-        + "2) Op iPhone: Import data\n\n"
-        + "Dit geeft direct exact dezelfde data op beide apparaten."
-      );
+      handleCloudSyncMenu();
     });
   }
 
@@ -261,12 +267,14 @@ function wireEvents() {
       const id = inp.getAttribute("data-checklist-id");
       if (!id) return;
       state.checklist[id] = inp.checked;
+      touchLocalDataUpdatedAt();
       try {
         localStorage.setItem(CHECKLIST_LS_KEY, JSON.stringify(state.checklist));
       } catch {
         /* ignore */
       }
       updateChecklistProgressUI();
+      void pushCloudSyncIfConnected();
     });
   }
 
@@ -435,6 +443,8 @@ function renderAll() {
   renderItems();
   renderMap();
   updateButtons();
+  renderSyncStatus();
+  renderSyncSetupBanner();
 }
 
 function renderHero() {
@@ -2172,7 +2182,6 @@ function normalizeData(parsed) {
   if (backfillCoordinatesFromExistingMapsLinks(base)) repaired = true;
   if (backfillKnownLandmarkCoordinates(base)) repaired = true;
   if (backfillPlaceCoordinatesFromItems(base)) repaired = true;
-  if (mergeSampleIcelandIfMissing(base)) repaired = true;
   return { data: base, repaired };
 }
 
@@ -2373,6 +2382,7 @@ function mergeSampleIcelandIfMissing(data) {
 }
 
 function saveAndRender() {
+  touchLocalDataUpdatedAt();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
   renderAll();
   void pushCloudSyncIfConnected();
@@ -2397,18 +2407,128 @@ function loadSyncConfig() {
 function saveSyncConfig(config) {
   if (!config) {
     localStorage.removeItem(SYNC_CONFIG_KEY);
+    setSyncStatus("off");
     return;
   }
   localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+  setSyncStatus("ok");
+}
+
+function getLocalDataUpdatedAt() {
+  try {
+    const raw = localStorage.getItem(DATA_META_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw);
+    return typeof parsed.updatedAt === "number" && Number.isFinite(parsed.updatedAt) ? parsed.updatedAt : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function touchLocalDataUpdatedAt(at) {
+  const updatedAt = typeof at === "number" && Number.isFinite(at) ? at : Date.now();
+  try {
+    localStorage.setItem(DATA_META_KEY, JSON.stringify({ updatedAt }));
+  } catch {
+    /* quota */
+  }
+  return updatedAt;
+}
+
+function isIcelandSampleDismissed() {
+  try {
+    return localStorage.getItem(ICELAND_SAMPLE_LS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setSyncStatus(status) {
+  state.syncStatus = status;
+  renderSyncStatus();
+}
+
+function renderSyncStatus() {
+  if (!el.syncStatusBadge) return;
+  if (!state.syncConfig) {
+    el.syncStatusBadge.textContent = "sync uit";
+    el.syncStatusBadge.className = "badge sync-badge sync-off";
+    return;
+  }
+  const labels = {
+    ok: "sync live",
+    error: "sync fout",
+    pending: "sync …",
+    off: "sync uit"
+  };
+  const key = state.syncStatus || "ok";
+  el.syncStatusBadge.textContent = labels[key] || "sync";
+  el.syncStatusBadge.className = `badge sync-badge sync-${key}`;
+}
+
+function renderSyncSetupBanner() {
+  if (!el.syncSetupBanner) return;
+  if (state.syncConfig) {
+    el.syncSetupBanner.hidden = true;
+    return;
+  }
+  el.syncSetupBanner.hidden = false;
+}
+
+function handleCloudSyncMenu() {
+  const status = state.syncConfig
+    ? `Gekoppeld (code: ${state.syncConfig.blobId})`
+    : "Nog niet gekoppeld";
+  const choice = window.prompt(
+    "Cloud sync — wijzigingen op pc en iPhone automatisch gelijk\n"
+    + `Status: ${status}\n\n`
+    + "1 = Nieuw kanaal aanmaken (eerst op pc)\n"
+    + "2 = Bestaand kanaal koppelen (daarna op iPhone)\n"
+    + "3 = Nu ophalen van cloud\n"
+    + "4 = Nu uploaden naar cloud\n"
+    + "5 = Ontkoppelen op dit apparaat",
+    state.syncConfig ? "3" : "1"
+  );
+  if (choice === null) return;
+  const c = choice.trim();
+  if (c === "1") void createCloudSyncChannel();
+  else if (c === "2") void connectToCloudSyncChannel();
+  else if (c === "3") void pullCloudSyncIfConnected(true);
+  else if (c === "4") void pushCloudSyncIfConnected(true);
+  else if (c === "5") {
+    state.syncConfig = null;
+    saveSyncConfig(null);
+    renderAll();
+    window.alert("Cloud sync uit op dit apparaat. Je lokale data blijft bewaard.");
+  } else {
+    window.alert("Kies een nummer van 1 t/m 5.");
+  }
 }
 
 function startCloudSyncPolling() {
-  if (state.syncPollTimer) clearInterval(state.syncPollTimer);
-  state.syncPollTimer = setInterval(() => {
-    void pullCloudSyncIfConnected();
-  }, 30000);
+  const schedulePoll = () => {
+    if (state.syncPollTimer) clearInterval(state.syncPollTimer);
+    if (!state.syncConfig) return;
+    const ms = document.visibilityState === "visible" ? SYNC_POLL_VISIBLE_MS : SYNC_POLL_HIDDEN_MS;
+    state.syncPollTimer = setInterval(() => {
+      void pullCloudSyncIfConnected();
+    }, ms);
+  };
+  schedulePoll();
+  document.addEventListener("visibilitychange", () => {
+    schedulePoll();
+    if (document.visibilityState === "visible" && state.syncConfig) {
+      void pullCloudSyncIfConnected();
+      void pushCloudSyncIfConnected();
+    }
+  });
+  window.addEventListener("pageshow", () => {
+    if (state.syncConfig) void pullCloudSyncIfConnected();
+  });
   window.addEventListener("online", () => {
+    if (!state.syncConfig) return;
     void pullCloudSyncIfConnected();
+    void pushCloudSyncIfConnected();
   });
 }
 
@@ -2439,15 +2559,19 @@ async function createCloudSyncChannel() {
     }
     state.syncConfig = { blobId, passphrase: clean };
     saveSyncConfig(state.syncConfig);
+    await pushCloudSyncIfConnected(true);
     const shareText = `Sync code: ${blobId}\nWachtwoord: ${clean}`;
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(shareText);
-      window.alert("Cloud sync actief. Sync-code + wachtwoord zijn gekopieerd; vul die op je iPhone in bij Cloud sync > 2.");
+      window.alert(
+        "Cloud sync actief. Code + wachtwoord gekopieerd.\n\n"
+        + "Op iPhone: Instellingen → Cloud sync → kies 2 en vul dezelfde gegevens in."
+      );
     } else {
-      window.prompt("Bewaar deze sync-code + wachtwoord en vul op iPhone in:", shareText);
+      window.prompt("Bewaar sync-code + wachtwoord en vul op iPhone in (Cloud sync → 2):", shareText);
     }
     state.locationStatusMessage = "Cloud sync kanaal actief.";
-    renderMap();
+    renderAll();
   } catch {
     window.alert("Cloud sync kanaal maken mislukt.");
   }
@@ -2476,11 +2600,12 @@ function extractBlobId(locationHeader) {
   return parts.length ? parts[parts.length - 1] : "";
 }
 
-async function pushCloudSyncIfConnected() {
+async function pushCloudSyncIfConnected(force = false) {
   if (!state.syncConfig || state.syncInFlight) return;
   const now = Date.now();
-  if (now - state.lastCloudSyncAt < 2000) return;
+  if (!force && now - state.lastCloudSyncAt < 1200) return;
   state.syncInFlight = true;
+  setSyncStatus("pending");
   try {
     const packed = await packEncryptedCloudPayload(state.data, state.syncConfig.passphrase);
     const response = await fetch(`${CLOUD_SYNC_BASE_URL}/${encodeURIComponent(state.syncConfig.blobId)}`, {
@@ -2490,50 +2615,119 @@ async function pushCloudSyncIfConnected() {
     });
     if (response.ok) {
       state.lastCloudSyncAt = Date.now();
+      setSyncStatus("ok");
+    } else {
+      setSyncStatus("error");
     }
   } catch {
-    // Best effort sync; local app keeps working.
+    setSyncStatus("error");
   } finally {
     state.syncInFlight = false;
   }
 }
 
+function buildCloudEnvelope(data) {
+  return {
+    schemaVersion: 2,
+    updatedAt: Date.now(),
+    data,
+    checklist: { ...state.checklist },
+    icelandDismissed: isIcelandSampleDismissed()
+  };
+}
+
+function parseCloudEnvelope(decrypted) {
+  if (!decrypted || typeof decrypted !== "object") return null;
+  if (decrypted.schemaVersion === 2 && decrypted.data) return decrypted;
+  if (Array.isArray(decrypted.countries)) {
+    return {
+      schemaVersion: 2,
+      updatedAt: 0,
+      data: decrypted,
+      checklist: null,
+      icelandDismissed: false
+    };
+  }
+  return null;
+}
+
+function applyCloudEnvelope(envelope) {
+  const normalized = normalizeData(envelope.data);
+  state.data = normalized.data;
+  if (envelope.checklist && typeof envelope.checklist === "object") {
+    state.checklist = { ...envelope.checklist };
+    try {
+      localStorage.setItem(CHECKLIST_LS_KEY, JSON.stringify(state.checklist));
+    } catch {
+      /* ignore */
+    }
+  }
+  if (envelope.icelandDismissed) {
+    try {
+      localStorage.setItem(ICELAND_SAMPLE_LS_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+  }
+  touchLocalDataUpdatedAt(envelope.updatedAt || Date.now());
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+  } catch {
+    /* ignore */
+  }
+  state.selectedCountryId = null;
+  state.selectedPlaceId = null;
+}
+
 async function pullCloudSyncIfConnected(showMessage = false) {
   if (!state.syncConfig || state.syncInFlight) return;
   state.syncInFlight = true;
+  setSyncStatus("pending");
   try {
     const response = await fetch(`${CLOUD_SYNC_BASE_URL}/${encodeURIComponent(state.syncConfig.blobId)}`, {
       method: "GET",
       headers: { Accept: "application/json" }
     });
     if (!response.ok) {
-      if (showMessage) window.alert("Cloud sync ophalen mislukt.");
+      setSyncStatus("error");
+      if (showMessage) window.alert("Cloud sync ophalen mislukt. Controleer internet en sync-code.");
       return;
     }
     const packed = await response.json();
-    const remote = await unpackEncryptedCloudPayload(packed, state.syncConfig.passphrase);
-    if (!remote || typeof remote !== "object") {
-      if (showMessage) window.alert("Cloud data kon niet worden gelezen.");
+    const decrypted = await unpackEncryptedCloudPayload(packed, state.syncConfig.passphrase);
+    const envelope = parseCloudEnvelope(decrypted);
+    if (!envelope) {
+      setSyncStatus("error");
+      if (showMessage) window.alert("Cloud data kon niet worden gelezen (verkeerd wachtwoord?).");
       return;
     }
-    const normalized = normalizeData(remote);
-    state.data = normalized.data;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
-    state.selectedCountryId = null;
-    state.selectedPlaceId = null;
-    state.locationStatusMessage = "Cloud sync bijgewerkt.";
-    renderAll();
+    const remoteAt = typeof envelope.updatedAt === "number" ? envelope.updatedAt : 0;
+    const localAt = getLocalDataUpdatedAt();
+    if (remoteAt > localAt) {
+      applyCloudEnvelope(envelope);
+      state.locationStatusMessage = "Cloud sync bijgewerkt.";
+      renderAll();
+      setSyncStatus("ok");
+      if (showMessage) window.alert("Cloud sync gelukt — data van cloud overgenomen.");
+    } else if (localAt > remoteAt) {
+      await pushCloudSyncIfConnected(true);
+      if (showMessage) window.alert("Je lokale data is nieuwer en is naar de cloud geüpload.");
+    } else {
+      setSyncStatus("ok");
+      if (showMessage) window.alert("Data is al gelijk met de cloud.");
+    }
     state.lastCloudSyncAt = Date.now();
-    if (showMessage) window.alert("Cloud sync gelukt.");
   } catch {
-    if (showMessage) window.alert("Cloud sync ophalen mislukt.");
+    setSyncStatus("error");
+    if (showMessage) window.alert("Cloud sync ophalen mislukt. Controleer internet.");
   } finally {
     state.syncInFlight = false;
   }
 }
 
 async function packEncryptedCloudPayload(data, passphrase) {
-  const plain = new TextEncoder().encode(JSON.stringify(data));
+  const envelope = buildCloudEnvelope(data);
+  const plain = new TextEncoder().encode(JSON.stringify(envelope));
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveSyncKey(passphrase, salt);

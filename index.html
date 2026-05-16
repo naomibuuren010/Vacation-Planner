@@ -21,7 +21,10 @@
 <body>
   <header class="topbar">
     <h1>Vacation Planner</h1>
-    <span id="offlineBadge" class="badge">offline klaar</span>
+    <div class="topbar-badges">
+      <span id="syncStatusBadge" class="badge sync-badge sync-off" title="Cloud sync status">sync uit</span>
+      <span id="offlineBadge" class="badge">offline klaar</span>
+    </div>
   </header>
 
   <div class="app-layout">
@@ -130,6 +133,9 @@
                   <button id="addCountryBtn">+ Land</button>
                 </div>
               </div>
+              <p id="syncSetupBanner" class="sync-setup-banner meta" hidden>
+                Koppel <strong>Cloud sync</strong> één keer (pc: optie 1, iPhone: optie 2) — daarna verschijnen wijzigingen automatisch op beide apparaten (badge: <em>sync live</em>).
+              </p>
               <p class="panel-hint meta">Voeg landen toe, bewerk of verwijder. Tik op een land in de balk hierboven om snel te wisselen.</p>
               <ul id="countriesList" class="list countries-list"></ul>
             </div>
@@ -160,7 +166,7 @@
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
     crossorigin=""
   ></script>
-  <script src="app.js?v=58"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>
 

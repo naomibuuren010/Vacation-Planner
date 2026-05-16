@@ -541,9 +541,38 @@ body {
   font-size: 1.1rem;
 }
 
+.topbar-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .badge {
   font-size: 0.75rem;
   color: var(--muted);
+}
+
+.sync-badge.sync-ok {
+  color: #4ade80;
+}
+
+.sync-badge.sync-error {
+  color: #f87171;
+}
+
+.sync-badge.sync-pending {
+  color: var(--accent);
+}
+
+.sync-setup-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+  line-height: 1.45;
 }
 
 .container {
