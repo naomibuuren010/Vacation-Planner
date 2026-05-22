@@ -1,9 +1,13 @@
 const STORAGE_KEY = "vacation_planner_v1";
-const CHECKLIST_LS_KEY = "vacation_planner_checklist_v1";
+const CHECKLIST_LS_KEY = "vacation_planner_checklist_v2";
+const CHECKLIST_ITEM_IDS = new Set([
+  "passport", "visa", "vaccines", "insurance", "hotel",
+  "activities", "packing", "budget", "cash", "sim"
+]);
 /** Eén keer demo-IJsland toevoegen als het nog ontbreekt (bijv. iPhone vs. andere device). */
 const ICELAND_SAMPLE_LS_KEY = "vacation_planner_iceland_sample_merged_v1";
 /** Zelfde nummer als in index.html (`app.js?v=`) en sw.js (cache + assets). */
-const APP_VERSION = 60;
+const APP_VERSION = 61;
 
 const DEFAULT_HERO_IMAGE =
   "https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=1200&q=80";
@@ -23,14 +27,74 @@ const CHECKLIST_ITEMS = [
   { id: "sim", label: "Simkaart / eSIM regelen" }
 ];
 
-function loadChecklistFromStorage() {
+function initEmptyChecklistByCountry(countries) {
+  const out = {};
+  for (const c of countries) out[c.id] = {};
+  return out;
+}
+
+function isLegacyFlatChecklist(parsed) {
+  if (!parsed || typeof parsed !== "object" || parsed.byCountry) return false;
+  return Object.keys(parsed).some((key) => CHECKLIST_ITEM_IDS.has(key));
+}
+
+function loadChecklistFromStorage(countries) {
+  const list = Array.isArray(countries) ? countries : [];
   try {
-    const raw = localStorage.getItem(CHECKLIST_LS_KEY);
-    if (!raw) return {};
+    const raw = localStorage.getItem(CHECKLIST_LS_KEY)
+      || localStorage.getItem("vacation_planner_checklist_v1");
+    if (!raw) return initEmptyChecklistByCountry(list);
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return initEmptyChecklistByCountry(list);
+    if (parsed.byCountry && typeof parsed.byCountry === "object") {
+      const out = initEmptyChecklistByCountry(list);
+      for (const c of list) {
+        const bucket = parsed.byCountry[c.id];
+        if (bucket && typeof bucket === "object") out[c.id] = { ...bucket };
+      }
+      return out;
+    }
+    if (isLegacyFlatChecklist(parsed)) {
+      const out = initEmptyChecklistByCountry(list);
+      const first = [...list].sort(byName("name"))[0];
+      if (first) {
+        for (const item of CHECKLIST_ITEMS) {
+          if (parsed[item.id]) out[first.id][item.id] = true;
+        }
+      }
+      return out;
+    }
+    return initEmptyChecklistByCountry(list);
   } catch {
-    return {};
+    return initEmptyChecklistByCountry(list);
+  }
+}
+
+function getChecklistCountryId() {
+  if (state.selectedCountryId
+    && state.data.countries.some((c) => c.id === state.selectedCountryId)) {
+    return state.selectedCountryId;
+  }
+  const sorted = [...state.data.countries].sort(byName("name"));
+  return sorted[0]?.id || null;
+}
+
+function getChecklistBucket(countryId) {
+  if (!countryId) return {};
+  if (!state.checklistByCountry[countryId]) {
+    state.checklistByCountry[countryId] = {};
+  }
+  return state.checklistByCountry[countryId];
+}
+
+function saveChecklistToStorage() {
+  try {
+    localStorage.setItem(
+      CHECKLIST_LS_KEY,
+      JSON.stringify({ byCountry: state.checklistByCountry })
+    );
+  } catch {
+    /* quota */
   }
 }
 
@@ -44,7 +108,7 @@ const state = {
   mapFocusAfterRender: null,
   geocodeInFlight: false,
   weatherRequestToken: 0,
-  checklist: loadChecklistFromStorage()
+  checklistByCountry: loadChecklistFromStorage(__loaded.data.countries)
 };
 if (__loaded.repaired) {
   try {
@@ -216,20 +280,19 @@ function wireEvents() {
       if (!(inp instanceof HTMLInputElement) || inp.type !== "checkbox") return;
       const id = inp.getAttribute("data-checklist-id");
       if (!id) return;
-      state.checklist[id] = inp.checked;
-      try {
-        localStorage.setItem(CHECKLIST_LS_KEY, JSON.stringify(state.checklist));
-      } catch {
-        /* ignore */
-      }
+      const countryId = getChecklistCountryId();
+      if (!countryId) return;
+      getChecklistBucket(countryId)[id] = inp.checked;
+      saveChecklistToStorage();
       updateChecklistProgressUI();
     });
   }
 
   el.addCountryBtn.addEventListener("click", () => {
     promptInput("Nieuw land", "Landnaam", (value) => {
+      const newId = uid();
       state.data.countries.push({
-        id: uid(),
+        id: newId,
         name: value.trim(),
         heroImageUrl: "",
         routeKmManual: null,
@@ -609,9 +672,10 @@ function renderCountries() {
 
 function updateChecklistProgressUI() {
   const total = CHECKLIST_ITEMS.length;
+  const bucket = getChecklistBucket(getChecklistCountryId());
   let done = 0;
   for (const item of CHECKLIST_ITEMS) {
-    if (state.checklist[item.id]) done += 1;
+    if (bucket[item.id]) done += 1;
   }
   const label = document.getElementById("checklistCountLabel");
   const fill = document.getElementById("checklistProgressFill");
@@ -622,12 +686,24 @@ function updateChecklistProgressUI() {
 function renderTravelChecklist() {
   const listEl = document.getElementById("checklistList");
   if (!listEl) return;
+  const countryId = getChecklistCountryId();
+  const country = state.data.countries.find((c) => c.id === countryId);
+  const titleEl = document.querySelector(".checklist-title");
+  if (titleEl) {
+    titleEl.textContent = country ? `Checklist — ${country.name}` : "Reis checklist";
+  }
   listEl.innerHTML = "";
+  if (!countryId) {
+    listEl.innerHTML = "<li><span class=\"meta\">Kies eerst een land om de checklist in te vullen.</span></li>";
+    updateChecklistProgressUI();
+    return;
+  }
+  const bucket = getChecklistBucket(countryId);
   for (const item of CHECKLIST_ITEMS) {
-    const checked = Boolean(state.checklist[item.id]);
+    const checked = Boolean(bucket[item.id]);
     const li = document.createElement("li");
     li.className = "checklist-row";
-    const inputId = `checklist-${item.id}`;
+    const inputId = `checklist-${countryId}-${item.id}`;
     li.innerHTML = `
       <input type="checkbox" id="${escapeAttr(inputId)}" data-checklist-id="${escapeAttr(item.id)}" ${checked ? "checked" : ""} />
       <label for="${escapeAttr(inputId)}">${escapeHtml(item.label)}</label>
@@ -1818,6 +1894,8 @@ function removeCountry(countryId) {
   state.data.places = state.data.places.filter((p) => p.countryId !== countryId);
   state.data.activities = state.data.activities.filter((a) => !placeIds.includes(a.placeId));
   state.data.hotels = state.data.hotels.filter((h) => !placeIds.includes(h.placeId));
+  delete state.checklistByCountry[countryId];
+  saveChecklistToStorage();
 
   if (state.selectedCountryId === countryId) state.selectedCountryId = null;
   if (state.selectedPlaceId && placeIds.includes(state.selectedPlaceId)) state.selectedPlaceId = null;
